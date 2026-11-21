@@ -2166,6 +2166,15 @@ bool ConstraintSolver::tryDispatchHasIndexer(
             return true;
         }
 
+        if (auto props = readPropsNamedBySingletons(tt, indexType))
+        {
+            TypeId result = props->front();
+            for (size_t i = 1; i < props->size(); ++i)
+                result = simplifyUnion(constraint->scope, constraint->location, result, (*props)[i]);
+            bind(constraint, resultType, result);
+            return true;
+        }
+
         if (tt->state == TableState::Unsealed)
         {
             // FIXME this is greedy.

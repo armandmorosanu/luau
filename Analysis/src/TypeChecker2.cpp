@@ -2473,7 +2473,7 @@ void TypeChecker2::visit(AstExprIndexExpr* indexExpr, ValueContext context)
             if (context == ValueContext::LValue && tt->indexer->isReadOnly)
                 reportError(PropertyAccessViolation{exprType, "indexer", PropertyAccessViolation::CannotWrite}, indexExpr->location);
         }
-        else
+        else if (context == ValueContext::LValue || !readPropsNamedBySingletons(tt, indexType))
             reportError(CannotExtendTable{exprType, CannotExtendTable::Indexer, "indexer??"}, indexExpr->location);
     }
     else if (auto mt = get<MetatableType>(exprType))

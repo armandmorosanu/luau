@@ -333,6 +333,10 @@ AstExpr* unwrapGroup(AstExpr* expr);
 // Returns true if ty is optional, ie if it is a supertype of nil
 bool isOptionalType(TypeId ty, NotNull<BuiltinTypes> builtinTypes);
 
+// The readable properties of `tt` that a string singleton key, or a union of them, names; nullopt if any is
+// not one.
+std::optional<std::vector<TypeId>> readPropsNamedBySingletons(const TableType* tt, TypeId key);
+
 // These are magic types used in `TypeChecker2` and `NonStrictTypeChecker`
 //
 // `_luau_print` causes it's argument to be printed out, as in:

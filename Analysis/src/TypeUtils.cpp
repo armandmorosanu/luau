@@ -133,6 +133,33 @@ std::optional<TypeId> findMetatableEntry(
         return std::nullopt;
 }
 
+std::optional<std::vector<TypeId>> readPropsNamedBySingletons(const TableType* tt, TypeId key)
+{
+    key = follow(key);
+    std::vector<TypeId> keys;
+    if (const UnionType* ut = get<UnionType>(key))
+    {
+        for (TypeId option : ut)
+            keys.push_back(follow(option));
+    }
+    else
+        keys.push_back(key);
+
+    std::vector<TypeId> result;
+    for (TypeId k : keys)
+    {
+        const SingletonType* st = get<SingletonType>(k);
+        const StringSingleton* ss = st ? get<StringSingleton>(st) : nullptr;
+        if (!ss)
+            return std::nullopt;
+        auto it = tt->props.find(ss->value);
+        if (it == tt->props.end() || !it->second.readTy)
+            return std::nullopt;
+        result.push_back(*it->second.readTy);
+    }
+    return result;
+}
+
 std::optional<TypeId> findTablePropertyRespectingMeta(
     NotNull<BuiltinTypes> builtinTypes,
     ErrorVec& errors,

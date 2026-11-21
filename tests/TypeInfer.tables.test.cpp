@@ -7044,4 +7044,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_checks_a_literal_against_the_ar
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "a_singleton_key_reads_the_properties_it_names")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        type state = { daily: number, weekly: number?, total: string }
+        type kind = "daily" | "weekly"
+        local s: state, k: kind, w: "daily" | "monthly" = nil :: any, "daily", "daily"
+        local a = s[k]
+        local b = s["total" :: "total"]
+        local c = s[w]
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(get<CannotExtendTable>(result.errors[0]));
+    CHECK_EQ("number?", toString(requireType("a")));
+    CHECK_EQ("string", toString(requireType("b")));
+}
+
 TEST_SUITE_END();
