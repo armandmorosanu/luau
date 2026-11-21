@@ -10,7 +10,6 @@
 #include <algorithm>
 
 LUAU_FASTINTVARIABLE(LuauTarjanChildLimit, 10000)
-LUAU_FASTINTVARIABLE(LuauTarjanPreallocationSize, 256)
 LUAU_FASTFLAG(LuauReduceTypeFunctionToSyntheticError)
 
 namespace Luau
@@ -161,16 +160,9 @@ static TypeId shallowClone(TypeId ty, TypeArena& dest, const TxnLog* log)
     return resTy;
 }
 
-Tarjan::Tarjan()
-    : typeToIndex(FInt::LuauTarjanPreallocationSize)
-    , packToIndex(FInt::LuauTarjanPreallocationSize)
-{
-    nodes.reserve(FInt::LuauTarjanPreallocationSize);
-    stack.reserve(FInt::LuauTarjanPreallocationSize);
-    edgesTy.reserve(FInt::LuauTarjanPreallocationSize);
-    edgesTp.reserve(FInt::LuauTarjanPreallocationSize);
-    worklist.reserve(FInt::LuauTarjanPreallocationSize);
-}
+// No preallocation: most walks visit a node or two (Widen averages 1.3), and seven 256-entry
+// buffers per Substitution object cost more than growing the rare large walk.
+Tarjan::Tarjan() = default;
 
 Tarjan::~Tarjan()
 {
