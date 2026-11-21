@@ -1163,8 +1163,18 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypePackId
         }
         else
         {
-            result->andAlso({false});
-            return *result;
+            // A missing value is nil: (A) <: (A, B?). Only a declared `T?` qualifies: a free or generic entry
+            // isn't bound to nil, and `unknown` (an unannotated parameter) keeps arity errors. The nil has no
+            // path in the sub pack, so a failure reads as the arity mismatch.
+            for (size_t i = headSize; i < superHead.size(); ++i)
+            {
+                const UnionType* ut = get<UnionType>(follow(superHead[i]));
+                if (!ut || !std::any_of(begin(ut), end(ut), isNil))
+                {
+                    result->andAlso({false});
+                    return *result;
+                }
+            }
         }
     }
     else if (subHead.size() > superHead.size())

@@ -1221,4 +1221,30 @@ TEST_CASE_FIXTURE(Fixture, "type_param_overflow")
     LUAU_REQUIRE_ERROR_COUNT(1, result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "shorter_return_fills_declared_optional_slots_with_nil")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        local function f(x: number): (boolean, string?)
+            if x > 0 then return true end
+            return false, "neg"
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "shorter_return_still_errors_for_required_slots")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        local function f(x: number): (boolean, string)
+            if x > 0 then return true end
+            return false, "neg"
+        end
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 TEST_SUITE_END();
