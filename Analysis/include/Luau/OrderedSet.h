@@ -34,6 +34,11 @@ struct OrderedSet
         }
     }
 
+    bool contains(T t) const
+    {
+        return elementSet.contains(t);
+    }
+
     iterator begin()
     {
         return elements.begin();

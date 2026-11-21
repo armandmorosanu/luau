@@ -2885,8 +2885,8 @@ TEST_CASE_FIXTURE(RefinementExternTypeFixture, "cannot_call_a_function_union")
     // functions containing `function` here, but it looks like a side
     // effect of how we execute `hasProp`.
     std::string expectedError = "Cannot call a value of type function in union:\n"
-                                "  ((ExternScriptConnection) -> ()) | function | t2 where t1 = ExternScriptConnection | { Disconnect: t2 } | { "
-                                "disconnect: (t1) -> (...any) } ; t2 = (t1) -> (...any)";
+                                "  ((ExternScriptConnection) -> ()) | function | t1 where t1 = (t2) -> (...any) ; t2 = "
+                                "ExternScriptConnection | { Disconnect: t1 } | { disconnect: (t2) -> (...any) }";
 
     CHECK_EQ(toString(result.errors[1]), expectedError);
 }

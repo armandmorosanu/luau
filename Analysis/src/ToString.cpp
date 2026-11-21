@@ -5,6 +5,7 @@
 #include "Luau/Constraint.h"
 #include "Luau/DenseHash.h"
 #include "Luau/Location.h"
+#include "Luau/OrderedSet.h"
 #include "Luau/Scope.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypeInfer.h"
@@ -61,8 +62,8 @@ struct FindCyclicTypes final : TypeVisitor
     bool exhaustive = false;
     Luau::DenseHashSet<TypeId> visited;
     Luau::DenseHashSet<TypePackId> visitedPacks;
-    std::set<TypeId> cycles;
-    std::set<TypePackId> cycleTPs;
+    OrderedSet<TypeId> cycles;
+    OrderedSet<TypePackId> cycleTPs;
 
     void cycle(TypeId ty) override
     {
@@ -126,7 +127,7 @@ struct FindCyclicTypes final : TypeVisitor
 };
 
 template<typename TID>
-void findCyclicTypes(std::set<TypeId>& cycles, std::set<TypePackId>& cycleTPs, TID ty, bool exhaustive)
+void findCyclicTypes(OrderedSet<TypeId>& cycles, OrderedSet<TypePackId>& cycleTPs, TID ty, bool exhaustive)
 {
     FindCyclicTypes fct;
     fct.exhaustive = exhaustive;
@@ -1447,8 +1448,8 @@ void TypeStringifier::stringify(TypePackId tpid, const std::vector<std::optional
 }
 
 static void assignCycleNames(
-    const std::set<TypeId>& cycles,
-    const std::set<TypePackId>& cycleTPs,
+    const OrderedSet<TypeId>& cycles,
+    const OrderedSet<TypePackId>& cycleTPs,
     DenseHashMap<TypeId, std::string>& cycleNames,
     DenseHashMap<TypePackId, std::string>& cycleTpNames,
     bool exhaustive
@@ -1469,7 +1470,7 @@ static void assignCycleNames(
                     ttv->instantiatedTypeParams.end(),
                     [&](auto&& el)
                     {
-                        return cycles.count(follow(el));
+                        return cycles.contains(follow(el));
                     }
                 ) != ttv->instantiatedTypeParams.end())
                 cycleNames[cycleTy] = ttv->name ? *ttv->name : *ttv->syntheticName;
@@ -1545,8 +1546,8 @@ ToStringResult toStringDetailed(TypeId ty, ToStringOptions& opts)
 
     StringifierState state{opts, result};
 
-    std::set<TypeId> cycles;
-    std::set<TypePackId> cycleTPs;
+    OrderedSet<TypeId> cycles;
+    OrderedSet<TypePackId> cycleTPs;
 
     findCyclicTypes(cycles, cycleTPs, ty, opts.exhaustive);
 
@@ -1677,8 +1678,8 @@ ToStringResult toStringDetailed(TypePackId tp, ToStringOptions& opts)
     ToStringResult result;
     StringifierState state{opts, result};
 
-    std::set<TypeId> cycles;
-    std::set<TypePackId> cycleTPs;
+    OrderedSet<TypeId> cycles;
+    OrderedSet<TypePackId> cycleTPs;
 
     findCyclicTypes(cycles, cycleTPs, tp, opts.exhaustive);
 
