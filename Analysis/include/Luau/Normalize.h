@@ -1,6 +1,10 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include <algorithm>
+#include <iterator>
+#include <vector>
+
 #include "Luau/NotNull.h"
 #include "Luau/DenseHash.h"
 #include "Luau/TypeFwd.h"
@@ -166,7 +170,49 @@ struct NormalizedFunctionType
 // * X is either a free type, a generic or a blocked type.
 // * T is a normalized type.
 struct NormalizedType;
-using NormalizedTyvars = std::unordered_map<TypeId, std::unique_ptr<NormalizedType>>;
+// Insertion-ordered, not pointer-hashed: union parts built from tyvars must not depend on addresses.
+template<typename V>
+struct OrderedTyvarMap
+{
+    using Entry = std::pair<TypeId, V>;
+    using iterator = typename std::vector<Entry>::iterator;
+    using const_iterator = typename std::vector<Entry>::const_iterator;
+
+    std::vector<Entry> entries;
+
+    iterator begin() { return entries.begin(); }
+    iterator end() { return entries.end(); }
+    const_iterator begin() const { return entries.begin(); }
+    const_iterator end() const { return entries.end(); }
+    bool empty() const { return entries.empty(); }
+    size_t size() const { return entries.size(); }
+    void clear() { entries.clear(); }
+
+    iterator find(TypeId key)
+    {
+        return std::find_if(entries.begin(), entries.end(), [key](const Entry& e) { return e.first == key; });
+    }
+    const_iterator find(TypeId key) const
+    {
+        return std::find_if(entries.begin(), entries.end(), [key](const Entry& e) { return e.first == key; });
+    }
+    std::pair<iterator, bool> emplace(TypeId key, V value)
+    {
+        if (iterator it = find(key); it != end())
+            return {it, false};
+        entries.emplace_back(key, std::move(value));
+        return {std::prev(entries.end()), true};
+    }
+    void insert_or_assign(TypeId key, V value)
+    {
+        if (iterator it = find(key); it != end())
+            it->second = std::move(value);
+        else
+            entries.emplace_back(key, std::move(value));
+    }
+    iterator erase(iterator it) { return entries.erase(it); }
+};
+using NormalizedTyvars = OrderedTyvarMap<std::unique_ptr<NormalizedType>>;
 
 // Operations provided by `Normalizer` can have ternary results:
 //   1. The operation returned true.

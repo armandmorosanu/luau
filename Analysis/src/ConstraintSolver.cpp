@@ -3495,7 +3495,7 @@ TablePropLookupResult ConstraintSolver::lookupTableProp_DEPRECATED(
     else if (auto utv = get<UnionType>(subjectType))
     {
         std::vector<TypeId> blocked;
-        std::set<TypeId> options;
+        TypeIds options;
 
         for (TypeId ty : utv)
         {
@@ -3511,11 +3511,11 @@ TablePropLookupResult ConstraintSolver::lookupTableProp_DEPRECATED(
         if (options.empty())
             return {{}, std::nullopt};
         else if (options.size() == 1)
-            return {{}, *begin(options)};
+            return {{}, *options.begin()};
         else if (options.size() == 2 && !suppressSimplification)
         {
-            TypeId one = *begin(options);
-            TypeId two = *(++begin(options));
+            TypeId one = *options.begin();
+            TypeId two = *(++options.begin());
 
             // if we're in an lvalue context, we need the _common_ type here.
             if (context == ValueContext::LValue)
@@ -3525,14 +3525,14 @@ TablePropLookupResult ConstraintSolver::lookupTableProp_DEPRECATED(
         }
         // if we're in an lvalue context, we need the _common_ type here.
         else if (context == ValueContext::LValue)
-            return {{}, arena->addType(IntersectionType{std::vector<TypeId>(begin(options), end(options))})};
+            return {{}, arena->addType(IntersectionType{std::vector<TypeId>(options.begin(), options.end())})};
         else
-            return {{}, arena->addType(UnionType{std::vector<TypeId>(begin(options), end(options))})};
+            return {{}, arena->addType(UnionType{std::vector<TypeId>(options.begin(), options.end())})};
     }
     else if (auto itv = get<IntersectionType>(subjectType))
     {
         std::vector<TypeId> blocked;
-        std::set<TypeId> options;
+        TypeIds options;
 
         for (TypeId ty : itv)
         {
@@ -3548,15 +3548,15 @@ TablePropLookupResult ConstraintSolver::lookupTableProp_DEPRECATED(
         if (options.empty())
             return {{}, std::nullopt};
         else if (options.size() == 1)
-            return {{}, *begin(options)};
+            return {{}, *options.begin()};
         else if (options.size() == 2 && !suppressSimplification)
         {
-            TypeId one = *begin(options);
-            TypeId two = *(++begin(options));
+            TypeId one = *options.begin();
+            TypeId two = *(++options.begin());
             return {{}, simplifyIntersection(constraint->scope, constraint->location, one, two)};
         }
         else
-            return {{}, arena->addType(IntersectionType{std::vector<TypeId>(begin(options), end(options))})};
+            return {{}, arena->addType(IntersectionType{std::vector<TypeId>(options.begin(), options.end())})};
     }
     else if (auto pt = get<PrimitiveType>(subjectType))
     {
@@ -3855,7 +3855,7 @@ std::optional<std::pair<TypeId, bool>> ConstraintSolver::lookupTablePropHelper(
         }
         else if (auto utv = get<UnionType>(subjectType))
         {
-            std::set<TypeId> options;
+            TypeIds options;
 
             if (context == ValueContext::LValue)
             {
@@ -3879,16 +3879,16 @@ std::optional<std::pair<TypeId, bool>> ConstraintSolver::lookupTablePropHelper(
                 if (options.empty())
                     return std::nullopt;
                 else if (options.size() == 1)
-                    return {{*begin(options), isIndex}};
+                    return {{*options.begin(), isIndex}};
                 else if (options.size() == 2 && !suppressSimplification)
                 {
-                    TypeId one = *begin(options);
-                    TypeId two = *(++begin(options));
+                    TypeId one = *options.begin();
+                    TypeId two = *(++options.begin());
 
                     return {{simplifyIntersection(constraint->scope, constraint->location, one, two), isIndex}};
                 }
                 else
-                    return {{arena->addType(IntersectionType{std::vector<TypeId>(begin(options), end(options))}), isIndex}};
+                    return {{arena->addType(IntersectionType{std::vector<TypeId>(options.begin(), options.end())}), isIndex}};
             }
             else
             {
@@ -3908,21 +3908,21 @@ std::optional<std::pair<TypeId, bool>> ConstraintSolver::lookupTablePropHelper(
                 if (options.empty())
                     return std::nullopt;
                 else if (options.size() == 1)
-                    return {{*begin(options), isIndex}};
+                    return {{*options.begin(), isIndex}};
                 else if (options.size() == 2 && !suppressSimplification)
                 {
-                    TypeId one = *begin(options);
-                    TypeId two = *(++begin(options));
+                    TypeId one = *options.begin();
+                    TypeId two = *(++options.begin());
 
                     return {{simplifyUnion(constraint->scope, constraint->location, one, two), isIndex}};
                 }
                 else
-                    return {{arena->addType(UnionType{std::vector<TypeId>(begin(options), end(options))}), isIndex}};
+                    return {{arena->addType(UnionType{std::vector<TypeId>(options.begin(), options.end())}), isIndex}};
             }
         }
         else if (auto itv = get<IntersectionType>(subjectType))
         {
-            std::set<TypeId> options;
+            TypeIds options;
             bool isIndex = true;
 
             for (TypeId ty : itv)
@@ -3938,15 +3938,15 @@ std::optional<std::pair<TypeId, bool>> ConstraintSolver::lookupTablePropHelper(
             if (options.empty())
                 return std::nullopt;
             else if (options.size() == 1)
-                return {{*begin(options), isIndex}};
+                return {{*options.begin(), isIndex}};
             else if (options.size() == 2 && !suppressSimplification)
             {
-                TypeId one = *begin(options);
-                TypeId two = *(++begin(options));
+                TypeId one = *options.begin();
+                TypeId two = *(++options.begin());
                 return {{simplifyIntersection(constraint->scope, constraint->location, one, two), isIndex}};
             }
             else
-                return {{arena->addType(IntersectionType{std::vector<TypeId>(begin(options), end(options))}), isIndex}};
+                return {{arena->addType(IntersectionType{std::vector<TypeId>(options.begin(), options.end())}), isIndex}};
         }
         else if (auto pt = get<PrimitiveType>(subjectType))
         {

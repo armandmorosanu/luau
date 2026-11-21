@@ -873,7 +873,7 @@ TypeId TypeSimplifier::intersectUnions(TypeId left, TypeId right)
     const UnionType* rightUnion = get<UnionType>(right);
     LUAU_ASSERT(rightUnion);
 
-    std::set<TypeId> newParts;
+    TypeIds newParts;
 
     // Combinatorial blowup moment!!
 
@@ -1115,7 +1115,7 @@ TypeId TypeSimplifier::intersectTypeWithNegation(TypeId left, TypeId right)
     {
         // ~A & (B | C)
         bool changed = false;
-        std::set<TypeId> newParts;
+        TypeIds newParts;
 
         for (TypeId part : rightUnion)
         {
@@ -1144,9 +1144,9 @@ TypeId TypeSimplifier::intersectTypeWithNegation(TypeId left, TypeId right)
         else if (0 == newParts.size())
             return builtinTypes->neverType;
         else if (1 == newParts.size())
-            return *begin(newParts);
+            return *newParts.begin();
         else
-            return arena->addType(UnionType{std::vector<TypeId>{begin(newParts), end(newParts)}});
+            return arena->addType(UnionType{std::vector<TypeId>{newParts.begin(), newParts.end()}});
     }
 
     if (auto pt = get<PrimitiveType>(right); pt && pt->type == PrimitiveType::Boolean)

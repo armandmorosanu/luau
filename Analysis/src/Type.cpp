@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Type.h"
+#include "Luau/TypeIds.h"
 
 #include "Luau/BuiltinDefinitions.h"
 #include "Luau/BuiltinTypeFunctions.h"
@@ -600,7 +601,7 @@ PendingExpansionType::PendingExpansionType(
 {
 }
 
-size_t PendingExpansionType::nextIndex = 0;
+std::atomic<size_t> PendingExpansionType::nextIndex = 0;
 
 FunctionType::FunctionType(TypePackId argTypes, TypePackId retTypes, std::optional<FunctionDefinition> defn, bool hasSelf)
     : definition(std::move(defn))
@@ -1135,7 +1136,7 @@ std::vector<TypeId> filterMap(TypeId type, TypeIdPredicate predicate)
 
     if (auto utv = get<UnionType>(type))
     {
-        std::set<TypeId> options;
+        TypeIds options;
         for (TypeId option : utv)
             if (auto out = predicate(follow(option)))
                 options.insert(*out);

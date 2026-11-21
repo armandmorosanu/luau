@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include <atomic>
 #include "Luau/Variant.h"
 
 #include <optional>
@@ -114,7 +115,7 @@ struct Error
     std::optional<Id> synthetic;
 
 private:
-    static int nextIndex;
+    static std::atomic<int> nextIndex;
 };
 
 template<typename Id, typename... Value>

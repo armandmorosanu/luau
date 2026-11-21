@@ -742,7 +742,7 @@ struct PendingExpansionType
     std::vector<TypePackId> packArguments;
     size_t index;
 
-    static size_t nextIndex;
+    static std::atomic<size_t> nextIndex;
 };
 
 // Anything!  All static checking is off.

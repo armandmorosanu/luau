@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include <atomic>
 #include "Luau/Common.h"
 #include "Luau/DenseHash.h"
 #include "Luau/NotNull.h"
@@ -92,7 +93,7 @@ struct BlockedTypePack
 
     struct Constraint* owner = nullptr;
 
-    static size_t nextIndex;
+    static std::atomic<size_t> nextIndex;
 };
 
 /**
