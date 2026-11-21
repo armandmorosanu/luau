@@ -326,6 +326,7 @@ struct Constraint
     NotNull<Scope> scope;
     Location location;
     ConstraintV c;
+    mutable struct ConstraintList* depsCache = nullptr; // cached cgraph dependency list
     std::shared_ptr<ModuleName> moduleName;
 
     /**

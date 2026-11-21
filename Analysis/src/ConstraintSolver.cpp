@@ -531,17 +531,45 @@ void ConstraintSolver::run()
         unsolvedConstraints.emplace_back(constraintSet.deferredConstraints[0].get());
     }
 
+    auto isBlocked = [&](const Constraint* c) -> bool
+    {
+        if (!c->depsCache)
+            c->depsCache = cgraph->dependencyListOf(c).get();
+        return c->depsCache->size() > 0;
+    };
+
     auto runSolverPass = [&](bool force)
     {
         bool progress = false;
 
-
+        // Non-force passes compact survivors to [0, w) in order instead of erasing each solved
+        // constraint; constraints pushed mid-pass append past i.
+        const bool compact = !force;
         size_t i = 0;
+        size_t w = 0;
+        struct CompactOnExit
+        {
+            std::vector<NotNull<const Constraint>>& v;
+            size_t& i;
+            size_t& w;
+            bool on;
+            ~CompactOnExit()
+            {
+                if (!on)
+                    return;
+                size_t n = v.size();
+                for (size_t k = i; k < n; ++k)
+                    v[w++] = v[k];
+                v.erase(v.begin() + ptrdiff_t(w), v.end());
+            }
+        } compactOnExit{unsolvedConstraints, i, w, compact};
         while (i < unsolvedConstraints.size())
         {
             NotNull<const Constraint> c = unsolvedConstraints[i];
-            if (!force && cgraph->hasUnsolvedDependencies(c.get()))
+            if (!force && isBlocked(c.get()))
             {
+                if (compact)
+                    unsolvedConstraints[w++] = c;
                 i++;
                 continue;
             }
@@ -581,7 +609,10 @@ void ConstraintSolver::run()
                 if (logger)
                     logger->popBlock(c);
 
-                unsolvedConstraints.erase(unsolvedConstraints.begin() + ptrdiff_t(i));
+                if (compact)
+                    ++i;
+                else
+                    unsolvedConstraints.erase(unsolvedConstraints.begin() + ptrdiff_t(i));
 
                 for (TypeId ty : unblockResult.types)
                 {
@@ -620,7 +651,11 @@ void ConstraintSolver::run()
                 }
             }
             else
+            {
+                if (compact)
+                    unsolvedConstraints[w++] = c;
                 ++i;
+            }
 
             if (force && success)
                 return true;

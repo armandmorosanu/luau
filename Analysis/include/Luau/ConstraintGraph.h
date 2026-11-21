@@ -259,6 +259,14 @@ private:
      */
     std::vector<std::unique_ptr<ConstraintList>> constraintLists;
 
+public:
+    NotNull<ConstraintList> dependencyListOf(ConstraintVertex vertex)
+    {
+        return findOrMakeDependencyList(vertex);
+    }
+
+private:
+
     [[maybe_unused]]
     void dump();
 };
