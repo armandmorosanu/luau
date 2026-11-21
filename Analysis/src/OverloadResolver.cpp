@@ -687,7 +687,11 @@ void OverloadResolver::testFunctionOrUnion(
         for (TypeId t : ut)
         {
             ++count;
-            testFunctionOrCallMetamethod(innerResult, t, argsPack, fnLocation);
+            // `any & T` refines to `T | *error-type*`; the error part suppresses, it isn't a non-function
+            if (is<ErrorType, AnyType>(follow(t)))
+                innerResult.ok.emplace_back(t);
+            else
+                testFunctionOrCallMetamethod(innerResult, t, argsPack, fnLocation);
         }
 
         if (FFlag::LuauOneBitAssumedConstraintTracking)

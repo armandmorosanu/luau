@@ -4066,4 +4066,20 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "while_local_doesnt_visit_annotation_2")
     LUAU_REQUIRE_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "method_call_on_any_refined_by_typeof")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        local function f(x: any): (string?, string?)
+            if typeof(x) == "string" then
+                local a, b = x:match("^(%w+) (%w+)$")
+                return a, b
+            end
+            return nil, nil
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();
