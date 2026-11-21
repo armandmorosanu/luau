@@ -301,6 +301,22 @@ struct InstantiationQueuer : IterativeTypeVisitor
     {
     }
 
+    template<typename T>
+    bool foreign(T t) const
+    {
+        return t->persistent || t->owningArena != solver->arena;
+    }
+
+    bool visit(TypeId ty) override
+    {
+        return !foreign(ty);
+    }
+
+    bool visit(TypePackId tp) override
+    {
+        return !foreign(tp);
+    }
+
     bool visit(TypeId ty, const PendingExpansionType& petv) override
     {
         if (!solver->typeAliasesToExpand.contains(ty))
@@ -349,7 +365,12 @@ struct InfiniteTypeFinder : IterativeTypeVisitor
 
     bool visit(TypeId ty) override
     {
-        return !foundInfiniteType;
+        return !foundInfiniteType && !ty->persistent;
+    }
+
+    bool visit(TypePackId tp) override
+    {
+        return !foundInfiniteType && !tp->persistent;
     }
 
     bool visit(TypeId ty, const PendingExpansionType& petv) override

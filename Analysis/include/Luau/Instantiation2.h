@@ -73,8 +73,12 @@ struct Replacer : Substitution
     TypePackId clean(TypePackId tp) override;
 
     bool ignoreChildren(TypeId ty) override;
+    bool ignoreChildren(TypePackId tp) override;
 
 private:
+    // Arenas holding a replaced generic; types in other arenas (other modules) cannot reach one.
+    std::vector<const TypeArena*> owners;
+    bool unreachableArena(const TypeArena* a) const;
     /**
      * It is *very* easy to create the world's worst bug by using a bound type
      * as key: this is a helper function we run in debug mode to confirm this

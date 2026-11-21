@@ -121,6 +121,8 @@ bool ReferenceCountInitializer::visit(TypeId ty, const PendingExpansionType&)
 
 bool ReferenceCountInitializer::visit(TypeId ty, const TableType& tt)
 {
+    if (ty->owningArena != currentArena)
+        return false;
     if (tt.state == TableState::Unsealed || tt.state == TableState::Free)
         mutatedTypes->insert(ty);
 
@@ -133,8 +135,10 @@ bool ReferenceCountInitializer::visit(TypeId ty, const ExternType&)
     return false;
 }
 
-bool ReferenceCountInitializer::visit(TypeId, const TypeFunctionInstanceType& tfit)
+bool ReferenceCountInitializer::visit(TypeId ty, const TypeFunctionInstanceType& tfit)
 {
+    if (ty->owningArena != currentArena)
+        return false;
     return tfit.function->canReduceGenerics;
 }
 

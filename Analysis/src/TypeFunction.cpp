@@ -52,6 +52,12 @@ struct InstanceCollector : TypeOnceVisitor
     TypeFunctionAbsenceCache* cache = nullptr;
     SmallVector<TypeId, 16> visitedTys;
     SmallVector<TypePackId, 16> visitedTps;
+    const TypeArena* arena = nullptr;
+    template<typename T>
+    bool foreign(T t) const
+    {
+        return t->persistent || t->owningArena != arena;
+    }
 
     explicit InstanceCollector(TypeFunctionAbsenceCache* cache)
         : TypeOnceVisitor("InstanceCollector", /* skipBoundTypes */ true)
@@ -61,6 +67,8 @@ struct InstanceCollector : TypeOnceVisitor
 
     bool visit(TypeId ty) override
     {
+        if (foreign(ty))
+            return false;
         if (cache)
         {
             if (cache->types.contains(ty))
@@ -74,6 +82,8 @@ struct InstanceCollector : TypeOnceVisitor
 
     bool visit(TypePackId tp) override
     {
+        if (foreign(tp))
+            return false;
         if (cache)
         {
             if (cache->typePacks.contains(tp))
@@ -735,6 +745,7 @@ FunctionGraphReductionResult reduceTypeFunctions(
         return {};
 
     InstanceCollector collector{cache};
+    collector.arena = ctx->arena.get();
 
     try
     {
@@ -781,6 +792,7 @@ FunctionGraphReductionResult reduceTypeFunctions(
         return {};
 
     InstanceCollector collector{cache};
+    collector.arena = ctx->arena.get();
 
     try
     {

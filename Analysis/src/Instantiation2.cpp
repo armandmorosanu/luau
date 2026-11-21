@@ -3,6 +3,9 @@
 #include "Luau/Polarity.h"
 #include "Luau/Scope.h"
 #include "Luau/Instantiation2.h"
+#include "Luau/TypeArena.h"
+
+#include <algorithm>
 
 namespace Luau
 {
@@ -17,6 +20,25 @@ Replacer::Replacer(
     , replacementPacks(replacementPacks)
 {
     LUAU_ASSERT(checkReplacementKeys());
+    auto addOwner = [&](const TypeArena* a)
+    {
+        if (std::find(owners.begin(), owners.end(), a) == owners.end())
+            owners.push_back(a);
+    };
+    for (const auto& [k, _] : *replacements)
+        addOwner(k->owningArena);
+    for (const auto& [k, _] : *replacementPacks)
+        addOwner(k->owningArena);
+}
+
+bool Replacer::unreachableArena(const TypeArena* a) const
+{
+    return a != arena && std::find(owners.begin(), owners.end(), a) == owners.end();
+}
+
+bool Replacer::ignoreChildren(TypePackId tp)
+{
+    return unreachableArena(tp->owningArena);
 }
 
 bool Replacer::isDirty(TypeId ty)
@@ -47,7 +69,7 @@ TypePackId Replacer::clean(TypePackId tp)
 
 bool Replacer::ignoreChildren(TypeId ty)
 {
-    if (get<ExternType>(ty))
+    if (get<ExternType>(ty) || unreachableArena(ty->owningArena))
         return true;
 
     if (auto ftv = get<FunctionType>(ty))

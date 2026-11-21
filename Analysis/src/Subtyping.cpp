@@ -455,6 +455,31 @@ struct ApplyMappedGenerics : Substitution
         , iceReporter(iceReporter.get())
         , env(NotNull{&env})
     {
+        for (const SubtypingEnvironment* e = &env; e; e = e->parent)
+        {
+            for (const auto& [g, bounds] : e->mappedGenerics)
+                if (!bounds.empty())
+                    addOwner(g->owningArena);
+            for (const auto& frame : e->mappedGenericPacks.frames)
+                for (const auto& [gp, _] : frame.mappings)
+                    addOwner(gp->owningArena);
+        }
+    }
+
+    // Arenas holding a mapped generic; types elsewhere (other modules) cannot reach one.
+    std::vector<const TypeArena*> owners;
+
+    void addOwner(const TypeArena* a)
+    {
+        if (std::find(owners.begin(), owners.end(), a) == owners.end())
+            owners.push_back(a);
+    }
+
+    template<typename T>
+    bool unreachableArena(T t) const
+    {
+        return !t->persistent && t->owningArena != arena.get() &&
+               std::find(owners.begin(), owners.end(), t->owningArena) == owners.end();
     }
 
     bool isDirty(TypeId ty) override
@@ -522,7 +547,7 @@ struct ApplyMappedGenerics : Substitution
 
     bool ignoreChildren(TypeId ty) override
     {
-        if (get<ExternType>(ty))
+        if (get<ExternType>(ty) || unreachableArena(ty))
             return true;
 
         if (const FunctionType* f = get<FunctionType>(ty))
@@ -540,7 +565,7 @@ struct ApplyMappedGenerics : Substitution
     }
     bool ignoreChildren(TypePackId ty) override
     {
-        return ty->persistent;
+        return ty->persistent || unreachableArena(ty);
     }
 };
 

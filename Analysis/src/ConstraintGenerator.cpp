@@ -798,9 +798,14 @@ struct FindSimplificationBlockers : IterativeTypeVisitor
     {
     }
 
-    bool visit(TypeId) override
+    bool visit(TypeId ty) override
     {
-        return !found;
+        return !found && !ty->persistent;
+    }
+
+    bool visit(TypePackId tp) override
+    {
+        return !found && !tp->persistent;
     }
 
     bool visit(TypeId, const BlockedType&) override
