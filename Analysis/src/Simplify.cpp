@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/SolverStats.h"
 #include "Luau/Simplify.h"
 
 #include "Luau/BuiltinDefinitions.h"
@@ -2035,6 +2036,7 @@ std::optional<TypeId> TypeSimplifier::intersectWithSimpleDiscriminant(TypeId tar
 
 SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId left, TypeId right)
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TSimplify);
     TypeSimplifier s{builtinTypes, arena};
 
     // fprintf(stderr, "Intersect %s and %s ...\n", toString(left).c_str(), toString(right).c_str());
@@ -2048,6 +2050,7 @@ SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<
 
 SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeIds parts)
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TSimplify);
     TypeSimplifier s{builtinTypes, arena};
 
     TypeId res = s.intersectFromParts(std::move(parts));
@@ -2057,6 +2060,7 @@ SimplifyResult simplifyIntersection(NotNull<BuiltinTypes> builtinTypes, NotNull<
 
 SimplifyResult simplifyUnion(NotNull<BuiltinTypes> builtinTypes, NotNull<TypeArena> arena, TypeId left, TypeId right)
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TSimplify);
     TypeSimplifier s{builtinTypes, arena};
 
     TypeId res = s.union_(left, right);

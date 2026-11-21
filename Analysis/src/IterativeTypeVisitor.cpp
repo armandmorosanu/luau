@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/IterativeTypeVisitor.h"
+#include "Luau/TypeArena.h"
 
 LUAU_FASTINT(LuauVisitRecursionLimit)
 LUAU_FASTFLAG(LuauReduceTypeFunctionToSyntheticError)
@@ -67,6 +68,11 @@ IterativeTypeVisitor::IterativeTypeVisitor(std::string visitorName, SeenSet seen
 {
     // Skip the first few doublings.  Almost all visits require less than 32 steps.
     workQueue.reserve(32);
+}
+
+IterativeTypeVisitor::~IterativeTypeVisitor()
+{
+    statNodes.flush(visitorName);
 }
 
 void IterativeTypeVisitor::cycle(TypeId) {}
@@ -270,6 +276,7 @@ void IterativeTypeVisitor::process(TypeId ty)
 
     if (hasSeen(ty))
         return;
+    statNodes.count(ty);
 
     if (auto btv = get<BoundType>(ty))
     {
@@ -489,6 +496,7 @@ void IterativeTypeVisitor::process(TypePackId tp)
 {
     if (hasSeen(tp))
         return;
+    statNodes.count(tp);
 
     if (auto btv = get<BoundTypePack>(tp))
     {

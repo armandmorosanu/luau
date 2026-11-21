@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/SolverStats.h"
 #include "Luau/TypeFunction.h"
 
 #include "Luau/Common.h"
@@ -54,6 +55,17 @@ struct InstanceCollector : TypeOnceVisitor
     SmallVector<TypePackId, 16> visitedTps;
     const TypeArena* arena = nullptr;
     template<typename T>
+    void countNode(T t)
+    {
+        namespace st = ::Luau::stats;
+        st::add(st::CICNodes);
+        if (t->persistent)
+            st::add(st::CICPersistent);
+        else if (t->owningArena != arena)
+            st::add(st::CICForeign);
+    }
+
+    template<typename T>
     bool foreign(T t) const
     {
         return t->persistent || t->owningArena != arena;
@@ -67,6 +79,7 @@ struct InstanceCollector : TypeOnceVisitor
 
     bool visit(TypeId ty) override
     {
+        countNode(ty);
         if (foreign(ty))
             return false;
         if (cache)
@@ -82,6 +95,7 @@ struct InstanceCollector : TypeOnceVisitor
 
     bool visit(TypePackId tp) override
     {
+        countNode(tp);
         if (foreign(tp))
             return false;
         if (cache)
@@ -657,7 +671,10 @@ struct TypeFunctionReducer
 
             ctx->userFuncName = tfit->userFuncName;
 
+            double reducerStart = TimeTrace::getClock();
+            ::Luau::stats::Timer reducerTimer(::Luau::stats::TReducer);
             TypeFunctionReductionResult<TypeId> result = tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, ctx);
+            ::Luau::stats::addNamed(tfit->function->name, uint64_t((TimeTrace::getClock() - reducerStart) * 1e9));
             handleTypeFunctionReduction(subject, std::move(result));
         }
     }
@@ -681,7 +698,10 @@ struct TypeFunctionReducer
             if (tryGuessing(subject))
                 return;
 
+            double reducerStart = TimeTrace::getClock();
+            ::Luau::stats::Timer reducerTimer(::Luau::stats::TReducer);
             TypeFunctionReductionResult<TypePackId> result = tfit->function->reducer(subject, tfit->typeArguments, tfit->packArguments, ctx);
+            ::Luau::stats::addNamed(tfit->function->name, uint64_t((TimeTrace::getClock() - reducerStart) * 1e9));
             handleTypeFunctionReduction(subject, std::move(result));
         }
     }
@@ -721,6 +741,7 @@ static FunctionGraphReductionResult reduceFunctionsInternal(
     while (!reducer.done())
     {
         reducer.step();
+        ::Luau::stats::add(::Luau::stats::CReduceSteps);
 
         ++iterationCount;
         if (iterationCount > DFInt::LuauTypeFamilyGraphReductionMaximumSteps)
@@ -741,14 +762,20 @@ FunctionGraphReductionResult reduceTypeFunctions(
     TypeFunctionAbsenceCache* cache
 )
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TReduce);
+    ::Luau::stats::add(::Luau::stats::CReduceCalls);
     if (cache && cache->types.contains(entrypoint))
+    {
+        ::Luau::stats::add(::Luau::stats::CReduceCacheHit);
         return {};
+    }
 
     InstanceCollector collector{cache};
     collector.arena = ctx->arena.get();
 
     try
     {
+        ::Luau::stats::Timer collectTimer(::Luau::stats::TCollect);
         collector.traverse(entrypoint);
     }
     catch (RecursionLimitException&)
@@ -758,6 +785,7 @@ FunctionGraphReductionResult reduceTypeFunctions(
 
     if (collector.tys.empty() && collector.tps.empty())
     {
+        ::Luau::stats::add(::Luau::stats::CReduceEmpty);
         if (cache)
         {
             for (TypeId t : collector.visitedTys)
@@ -788,14 +816,20 @@ FunctionGraphReductionResult reduceTypeFunctions(
     TypeFunctionAbsenceCache* cache
 )
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TReduce);
+    ::Luau::stats::add(::Luau::stats::CReduceCalls);
     if (cache && cache->typePacks.contains(entrypoint))
+    {
+        ::Luau::stats::add(::Luau::stats::CReduceCacheHit);
         return {};
+    }
 
     InstanceCollector collector{cache};
     collector.arena = ctx->arena.get();
 
     try
     {
+        ::Luau::stats::Timer collectTimer(::Luau::stats::TCollect);
         collector.traverse(entrypoint);
     }
     catch (RecursionLimitException&)
@@ -805,6 +839,7 @@ FunctionGraphReductionResult reduceTypeFunctions(
 
     if (collector.tys.empty() && collector.tps.empty())
     {
+        ::Luau::stats::add(::Luau::stats::CReduceEmpty);
         if (cache)
         {
             for (TypeId t : collector.visitedTys)

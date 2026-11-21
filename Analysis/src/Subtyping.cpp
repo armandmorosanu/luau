@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/SolverStats.h"
 #include "Luau/Subtyping.h"
 
 #include "Luau/Common.h"
@@ -547,6 +548,12 @@ struct ApplyMappedGenerics : Substitution
 
     bool ignoreChildren(TypeId ty) override
     {
+        namespace st = ::Luau::stats;
+        st::add(st::CAmgNodes);
+        if (ty->persistent)
+            st::add(st::CAmgPersistent);
+        else if (ty->owningArena != arena)
+            st::add(st::CAmgForeign);
         if (get<ExternType>(ty) || unreachableArena(ty))
             return true;
 
@@ -556,8 +563,11 @@ struct ApplyMappedGenerics : Substitution
             {
                 g = follow(g);
                 if (const std::vector<SubtypingEnvironment::GenericBounds>* bounds = env->mappedGenerics.find(g); bounds && !bounds->empty())
+                {
                     // We don't want to mutate the generics of a function that's being subtyped
+                    ::Luau::stats::add(::Luau::stats::CAmgFnStop);
                     return true;
+                }
             }
         }
 
@@ -667,6 +677,25 @@ Subtyping::Subtyping(
 
 SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope> scope)
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TSubtyping);
+    ::Luau::stats::add(::Luau::stats::CSubTop);
+    double kindStart = TimeTrace::getClock();
+    struct KindStat
+    {
+        double start;
+        TypeId a;
+        TypeId b;
+        ~KindStat()
+        {
+            static const char* names[] = {"bound", "error", "free", "generic", "prim", "single", "blocked", "pending", "fn", "table", "mt", "extern", "any", "union", "inter", "lazy", "unknown", "never", "neg", "norefine", "tfi", "x", "x", "x", "x"};
+            std::string key = std::string("sub ") + names[follow(a)->ty.index()] + " <: " + names[follow(b)->ty.index()];
+            if (auto f = get<FunctionType>(follow(a)); f && (!f->generics.empty() || !f->genericPacks.empty()))
+                key += " (generic sub)";
+            if (auto f = get<FunctionType>(follow(b)); f && (!f->generics.empty() || !f->genericPacks.empty()))
+                key += " (generic super)";
+            ::Luau::stats::addNamed(key, uint64_t((TimeTrace::getClock() - start) * 1e9));
+        }
+    } kindStat{kindStart, subTy, superTy};
     SubtypingEnvironment env;
 
     SubtypingResult result = isCovariantWith(env, subTy, superTy, scope);
@@ -702,6 +731,7 @@ SubtypingResult Subtyping::isSubtype(TypeId subTy, TypeId superTy, NotNull<Scope
 
 SubtypingResult Subtyping::isSubtype(TypePackId subTp, TypePackId superTp, NotNull<Scope> scope, const std::vector<TypeId>& bindableGenerics)
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TSubtyping);
     const std::vector<TypePackId> bindableGenericPacks;
     return isSubtype(subTp, superTp, scope, bindableGenerics, bindableGenericPacks);
 }
@@ -714,6 +744,7 @@ SubtypingResult Subtyping::isSubtype(
     const std::vector<TypePackId>& bindableGenericPacks
 )
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TSubtyping);
     SubtypingEnvironment env;
     for (TypeId g : bindableGenerics)
         env.mappedGenerics[follow(g)] = {SubtypingEnvironment::GenericBounds{}};
@@ -771,15 +802,20 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     if (std::optional<TypeId> superIt = env.tryFindSubstitution(superTy); superIt && *superIt)
         subTy = *superIt;
 
+    ::Luau::stats::add(::Luau::stats::CSubCov);
+    if (subTy->persistent && superTy->persistent)
+        ::Luau::stats::add(::Luau::stats::CSubPersistentPair);
     const SubtypingResult* cachedResult = resultCache.find({subTy, superTy});
     if (cachedResult)
     {
+        ::Luau::stats::add(::Luau::stats::CSubCacheHit);
         return *cachedResult;
     }
 
     cachedResult = env.tryFindSubtypingResult({subTy, superTy});
     if (cachedResult)
     {
+        ::Luau::stats::add(::Luau::stats::CSubEnvHit);
         return *cachedResult;
     }
 
@@ -788,7 +824,10 @@ SubtypingResult Subtyping::isCovariantWith(SubtypingEnvironment& env, TypeId sub
     // then should it also carry the information that it's error-suppressing?
     // If it should, then `error <: error` should also do the same.
     if (subTy == superTy)
+    {
+        ::Luau::stats::add(::Luau::stats::CSubIdentity);
         return {true};
+    }
 
     std::pair<TypeId, TypeId> typePair{subTy, superTy};
     if (!seenTypes.try_insert(typePair))
@@ -2546,7 +2585,9 @@ SubtypingResult Subtyping::isCovariantWith(
                 auto bounds = env.mappedGenerics.find(g);
                 LUAU_ASSERT(bounds && !bounds->empty());
                 // Check the bounds are valid
+                double boundsStart = TimeTrace::getClock();
                 result.andAlso(checkGenericBounds(bounds->back(), env, scope, gen->name));
+                ::Luau::stats::addNamed("checkGenericBounds", uint64_t((TimeTrace::getClock() - boundsStart) * 1e9));
 
                 bounds->pop_back();
             }
@@ -3070,6 +3111,7 @@ SubtypingResult Subtyping::checkGenericBounds(
 )
 {
     SubtypingResult result{true};
+    double lapT = TimeTrace::getClock();
 
     const auto& [lb, ub] = bounds;
 
@@ -3092,16 +3134,24 @@ SubtypingResult Subtyping::checkGenericBounds(
         aggregateUpperBound.add(t);
     }
     TypeId upperBound = aggregateUpperBound.build();
+    ::Luau::stats::addNamed("cgb 1 build", uint64_t((TimeTrace::getClock() - lapT) * 1e9));
+    lapT = TimeTrace::getClock();
 
     if (auto substLowerBound = env.applyMappedGenerics(builtinTypes, arena, lowerBound, iceReporter))
         lowerBound = *substLowerBound;
 
     if (auto substUpperBound = env.applyMappedGenerics(builtinTypes, arena, upperBound, iceReporter))
         upperBound = *substUpperBound;
+    ::Luau::stats::addNamed("cgb 2 applyMapped", uint64_t((TimeTrace::getClock() - lapT) * 1e9));
+    lapT = TimeTrace::getClock();
 
     std::shared_ptr<const NormalizedType> nt = normalizer->normalize(upperBound);
     // we say that the result is true if normalization failed because complex types are likely to be inhabited.
+    ::Luau::stats::addNamed("cgb 3 normalize", uint64_t((TimeTrace::getClock() - lapT) * 1e9));
+    lapT = TimeTrace::getClock();
     NormalizationResult res = nt ? normalizer->isInhabited(nt.get()) : NormalizationResult::True;
+    ::Luau::stats::addNamed("cgb 4 inhabited", uint64_t((TimeTrace::getClock() - lapT) * 1e9));
+    lapT = TimeTrace::getClock();
 
     if (!nt || res == NormalizationResult::HitLimits)
         result.normalizationTooComplex = true;
@@ -3127,6 +3177,8 @@ SubtypingResult Subtyping::checkGenericBounds(
     boundsEnv.parent = &env;
     SubtypingResult boundsResult = isCovariantWith(boundsEnv, lowerBound, upperBound, scope);
     boundsResult.reasoning.clear();
+    ::Luau::stats::addNamed("cgb 5 lb<:ub", uint64_t((TimeTrace::getClock() - lapT) * 1e9));
+    lapT = TimeTrace::getClock();
 
     if (res == NormalizationResult::False)
         result.genericBoundsMismatches.emplace_back(std::string(genericName), bounds.lowerBound, bounds.upperBound);
@@ -3149,6 +3201,8 @@ SubtypingResult Subtyping::checkGenericBounds(
         }
     }
 
+    ::Luau::stats::addNamed("cgb 6 suppress", uint64_t((TimeTrace::getClock() - lapT) * 1e9));
+    lapT = TimeTrace::getClock();
     result.andAlso(boundsResult);
 
     return result;

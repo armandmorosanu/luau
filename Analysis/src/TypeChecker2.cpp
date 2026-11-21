@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/SolverStats.h"
 #include "Luau/TypeChecker2.h"
 
 #include "Luau/Ast.h"
@@ -323,6 +324,7 @@ void check(
     Module* module
 )
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TTypeCheck2);
     LUAU_TIMETRACE_SCOPE("check", "Typechecking");
 
     TypeChecker2 typeChecker{builtinTypes, typeFunctionRuntime, unifierState, limits, logger, &sourceModule, module};

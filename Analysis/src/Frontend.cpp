@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/SolverStats.h"
 #include "Luau/Frontend.h"
 
 #include "Luau/BuiltinDefinitions.h"
@@ -1456,6 +1457,7 @@ static void errorOnCyclicTopLevelAccess(const SourceModule& sourceModule, const 
 
 void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TModuleCheck);
     ModuleSCCPtr scc = item.scc;
     LUAU_ASSERT(scc->sharedArena);
 
@@ -1892,8 +1894,10 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
 
         double timestamp = getTimestamp();
 
+        double feT_lint = TimeTrace::getClock();
         std::vector<LintWarning> warnings =
             Luau::lint(sourceModule.root, *sourceModule.names, environmentScope, module.get(), sourceModule.hotcomments, lintOptions);
+        ::Luau::stats::addNamed("fe lint", uint64_t((TimeTrace::getClock() - feT_lint) * 1e9));
 
         moduleInfo.stats.timeLint += getTimestamp() - timestamp;
 
@@ -2291,6 +2295,16 @@ ModulePtr check(
     std::function<void(const ModuleName&, std::string)> writeJsonLog
 )
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TModuleCheck);
+    struct ModuleTime
+    {
+        const std::string& name;
+        double start = TimeTrace::getClock();
+        ~ModuleTime()
+        {
+            ::Luau::stats::addNamed("mod " + name, uint64_t((TimeTrace::getClock() - start) * 1e9));
+        }
+    } moduleTime{sourceModule.humanReadableName};
     LUAU_TIMETRACE_SCOPE("Frontend::check", "Typechecking");
     LUAU_TIMETRACE_ARGUMENT("module", sourceModule.name.c_str());
     LUAU_TIMETRACE_ARGUMENT("name", sourceModule.humanReadableName.c_str());
@@ -2320,7 +2334,9 @@ ModulePtr check(
         }
     }
 
+double feT_dfg = TimeTrace::getClock();
     DataFlowGraph dfg = DataFlowGraphBuilder::build(sourceModule.root, NotNull{&module->defArena}, NotNull{&module->keyArena}, iceHandler);
+    ::Luau::stats::addNamed("fe dfg", uint64_t((TimeTrace::getClock() - feT_dfg) * 1e9));
 
     UnifierSharedState unifierState{iceHandler};
     unifierState.counters.recursionLimit = FInt::LuauTypeInferRecursionLimit;
@@ -2490,7 +2506,9 @@ ModulePtr check(
         builtinTypes,
         NotNull{parentScope.get()}
     };
+double feT_etv = TimeTrace::getClock();
     sourceModule.root->visit(&etv);
+    ::Luau::stats::addNamed("fe etv", uint64_t((TimeTrace::getClock() - feT_etv) * 1e9));
 
     // NOTE: This used to be done prior to cloning the public interface, but
     // we now replace "internal" types with `*error-type*`.
@@ -2526,7 +2544,9 @@ ModulePtr check(
 
 
     unfreeze(module->interfaceTypes);
+double feT_clonePublic = TimeTrace::getClock();
     module->clonePublicInterface(builtinTypes, *iceHandler, SolverMode::New);
+    ::Luau::stats::addNamed("fe clonePublic", uint64_t((TimeTrace::getClock() - feT_clonePublic) * 1e9));
 
     // It would be nice if we could freeze the arenas before doing type
     // checking, but we'll have to do some work to get there.

@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
+#include "Luau/SolverStats.h"
 #include "Luau/Normalize.h"
 #include "Luau/ToString.h"
 
@@ -420,6 +421,7 @@ static bool isShallowInhabited(const NormalizedType& norm)
 
 NormalizationResult Normalizer::isInhabited(const NormalizedType* norm)
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TInhabited);
     DenseHashSet<TypeId> seen;
     try
     {
@@ -464,6 +466,7 @@ NormalizationResult Normalizer::isInhabited(const NormalizedType* norm, DenseHas
 
 NormalizationResult Normalizer::isInhabited(TypeId ty)
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TInhabited);
     if (cacheInhabitance)
     {
         if (bool* result = cachedIsInhabited.find(ty))
@@ -931,6 +934,7 @@ static bool isCacheable(TypeId ty)
 
 std::shared_ptr<const NormalizedType> Normalizer::normalize(TypeId ty)
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TNormalize);
     if (!arena)
         sharedState->iceHandler->ice("Normalizing types outside a module");
 

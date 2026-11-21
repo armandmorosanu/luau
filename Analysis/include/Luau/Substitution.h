@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/SolverStats.h"
 #include "Luau/TypeArena.h"
 #include "Luau/TypeFwd.h"
 #include "Luau/DenseHash.h"
@@ -102,7 +103,10 @@ struct TarjanNode
 struct Tarjan
 {
     Tarjan();
-    virtual ~Tarjan() = default;
+    virtual ~Tarjan();
+    const TypeArena* statsArena = nullptr;
+    const char* statsName = nullptr;
+    ::Luau::stats::NodeCounter statNodes;
 
     // Vertices (types and type packs) are indexed, using pre-order traversal.
     DenseHashMap<TypeId, int> typeToIndex;

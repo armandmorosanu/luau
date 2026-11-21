@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Luau/Constraint.h"
+#include "Luau/SolverStats.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
 

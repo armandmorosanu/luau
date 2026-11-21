@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/SolverStats.h"
 #include "Luau/ConstraintSolver.h"
 
 #include "Luau/Anyification.h"
@@ -302,6 +303,17 @@ struct InstantiationQueuer : IterativeTypeVisitor
     }
 
     template<typename T>
+    void countNode(T t)
+    {
+        namespace st = ::Luau::stats;
+        st::add(st::CQNodes);
+        if (t->persistent)
+            st::add(st::CQPersistent);
+        else if (t->owningArena != solver->arena)
+            st::add(st::CQForeign);
+    }
+
+    template<typename T>
     bool foreign(T t) const
     {
         return t->persistent || t->owningArena != solver->arena;
@@ -309,11 +321,13 @@ struct InstantiationQueuer : IterativeTypeVisitor
 
     bool visit(TypeId ty) override
     {
+        countNode(ty);
         return !foreign(ty);
     }
 
     bool visit(TypePackId tp) override
     {
+        countNode(tp);
         return !foreign(tp);
     }
 
@@ -516,6 +530,7 @@ void ConstraintSolver::randomize(unsigned seed)
 
 void ConstraintSolver::run()
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TSolve);
     LUAU_TIMETRACE_SCOPE("ConstraintSolver::run", "Typechecking");
 
     if (isDone())
@@ -561,6 +576,9 @@ void ConstraintSolver::run()
 
     auto runSolverPass = [&](bool force)
     {
+        namespace st = ::Luau::stats;
+        st::add(force ? st::CForcePasses : st::CPasses);
+        st::max(st::CPeakUnsolved, unsolvedConstraints.size());
         bool progress = false;
 
         // Non-force passes compact survivors to [0, w) in order instead of erasing each solved
@@ -587,8 +605,10 @@ void ConstraintSolver::run()
         while (i < unsolvedConstraints.size())
         {
             NotNull<const Constraint> c = unsolvedConstraints[i];
+            st::add(st::CChecks);
             if (!force && isBlocked(c.get()))
             {
+                st::add(st::CSkips);
                 if (compact)
                     unsolvedConstraints[w++] = c;
                 i++;
@@ -615,7 +635,12 @@ void ConstraintSolver::run()
             if (FFlag::DebugLuauAssertOnForcedConstraint)
                 LUAU_ASSERT(!force);
 
+            st::add(force ? st::CForcedAttempts : st::CAttempts);
             bool success = tryDispatch(c, force);
+            if (success)
+                st::add(st::CSuccesses);
+            else if (force)
+                st::add(st::CForcedFails);
 
             progress |= success;
 
@@ -624,7 +649,11 @@ void ConstraintSolver::run()
                 if (logger)
                     logger->commitStepSnapshot(snapshot);
 
-                auto unblockResult = cgraph->unblockConstraint(c);
+                auto unblockResult = [&]
+                {
+                    st::Timer unblockTimer(st::TUnblock);
+                    return cgraph->unblockConstraint(c);
+                }();
 
                 // We need to handle the logger here.
                 if (logger)
@@ -633,7 +662,10 @@ void ConstraintSolver::run()
                 if (compact)
                     ++i;
                 else
+                {
+                    st::add(st::CEraseShift, unsolvedConstraints.size() - i - 1);
                     unsolvedConstraints.erase(unsolvedConstraints.begin() + ptrdiff_t(i));
+                }
 
                 for (TypeId ty : unblockResult.types)
                 {
@@ -819,6 +851,7 @@ std::optional<TypeId> resolvePrimitiveLiteral(const FreeType& ft)
 
 void ConstraintSolver::generalizeOneType(TypeId ty)
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TGeneralize);
     ty = follow(ty);
     const FreeType* freeTy = get<FreeType>(ty);
 
@@ -917,6 +950,9 @@ void ConstraintSolver::bind(NotNull<const Constraint> constraint, TypePackId tp,
 
 bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool force)
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TDispatch);
+    ::Luau::stats::Timer statsKindTimer(::Luau::stats::TDispatchKind0 + constraint->c.index());
+    ::Luau::stats::add(::Luau::stats::CKind0 + constraint->c.index());
 
     LUAU_ASSERT(force || !cgraph->hasUnsolvedDependencies(constraint.get()));
     bool success = false;
@@ -964,6 +1000,8 @@ bool ConstraintSolver::tryDispatch(NotNull<const Constraint> constraint, bool fo
     else
         LUAU_ASSERT(false);
 
+    if (success)
+        ::Luau::stats::add(::Luau::stats::CKindOk0 + constraint->c.index());
     return success;
 }
 
@@ -1587,6 +1625,7 @@ void ConstraintSolver::fillInDiscriminantTypes(NotNull<const Constraint> constra
 
 bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<const Constraint> constraint)
 {
+    std::optional<::Luau::stats::Timer> fcTimer{std::in_place, ::Luau::stats::TFcPre};
     TypeId fn = follow(c.fn);
     TypePackId argsPack = follow(c.argsPack);
     TypePackId result = follow(c.result);
@@ -1695,6 +1734,8 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
 
     TypeId overloadToUse = fn;
 
+    fcTimer.reset();
+    fcTimer.emplace(::Luau::stats::TFcResolve);
     // If the function we have is already a function type, then there's no
     // point in trying to do overload selection: we're just wasting CPU.
     if (!is<FunctionType>(fn))
@@ -1729,6 +1770,8 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     }
 
 
+    fcTimer.reset();
+    fcTimer.emplace(::Luau::stats::TFcUnify);
     TypePackId retTp = arena->freshTypePack(constraint->scope, Polarity::Positive);
     trackInteriorFreeTypePack(constraint->scope, retTp);
 
@@ -1744,6 +1787,8 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     for (TypePackId freeTp : u2.newFreshTypePacks)
         trackInteriorFreeTypePack(constraint->scope, freeTp);
 
+    fcTimer.reset();
+    fcTimer.emplace(::Luau::stats::TFcInst2);
     if (!u2.genericSubstitutions.empty() || !u2.genericPackSubstitutions.empty())
     {
         // FIXME CLI-191965: Consider:
@@ -1856,6 +1901,8 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
         break;
     }
 
+    fcTimer.reset();
+    fcTimer.emplace(::Luau::stats::TFcQueuer);
     InstantiationQueuer queuer{constraint->scope, constraint->location, this, constraint->moduleName};
     queuer.run(overloadToUse);
     queuer.run(argsPack);
@@ -4240,6 +4287,7 @@ NotNull<Constraint> ConstraintSolver::pushConstraint(
 
     solverConstraints.push_back(std::move(c));
     unsolvedConstraints.emplace_back(borrow);
+    ::Luau::stats::add(::Luau::stats::CPushes);
 
     if (solverConstraintLimit > 0)
     {
@@ -4275,6 +4323,7 @@ NotNull<Constraint> ConstraintSolver::DEPRECATED_pushConstraint(NotNull<Scope> s
 
     solverConstraints.push_back(std::move(c));
     unsolvedConstraints.emplace_back(borrow);
+    ::Luau::stats::add(::Luau::stats::CPushes);
 
     if (solverConstraintLimit > 0)
     {

@@ -1,6 +1,8 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/SolverStats.h"
+#include "Luau/TypeArena.h"
 #include <unordered_set>
 
 #include "Luau/DenseHash.h"
@@ -88,7 +90,11 @@ struct GenericTypeVisitor
     {
     }
 
-    virtual ~GenericTypeVisitor() {}
+    ::Luau::stats::NodeCounter statNodes;
+    virtual ~GenericTypeVisitor()
+    {
+        statNodes.flush(visitorName);
+    }
 
     virtual void cycle(TypeId) {}
     virtual void cycle(TypePackId) {}
@@ -238,6 +244,7 @@ struct GenericTypeVisitor
             cycle(ty);
             return;
         }
+        statNodes.count(ty);
 
         if (auto btv = get<BoundType>(ty))
         {
@@ -462,6 +469,7 @@ struct GenericTypeVisitor
             cycle(tp);
             return;
         }
+        statNodes.count(tp);
 
         if (auto btv = get<BoundTypePack>(tp))
         {

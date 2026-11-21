@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #pragma once
 
+#include "Luau/SolverStats.h"
 #include "Luau/Type.h"
 #include "Luau/TypePack.h"
 #include "Luau/DenseHash.h"
@@ -43,7 +44,7 @@ struct IterativeTypeVisitor
     IterativeTypeVisitor(const IterativeTypeVisitor&) = delete;
     IterativeTypeVisitor& operator=(const IterativeTypeVisitor&) = delete;
 
-    virtual ~IterativeTypeVisitor() = default;
+    virtual ~IterativeTypeVisitor();
 
     virtual void cycle(TypeId);
     virtual void cycle(TypePackId);
@@ -103,6 +104,7 @@ private:
     void processWorkQueue();
 
     SeenSet seen;
+    ::Luau::stats::NodeCounter statNodes;
 
     std::vector<WorkItem> workQueue;
     int32_t parentCursor = -1;

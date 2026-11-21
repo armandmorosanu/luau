@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/SolverStats.h"
 #include "Luau/OverloadResolver.h"
 
 #include "Luau/Common.h"
@@ -234,6 +235,7 @@ OverloadResolution OverloadResolver::resolveOverload(
     bool useFreeTypeBounds
 )
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TOverload);
     OverloadResolution result;
 
     ty = follow(ty);

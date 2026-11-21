@@ -3,6 +3,7 @@
 #include "Luau/Polarity.h"
 #include "Luau/Scope.h"
 #include "Luau/Instantiation2.h"
+#include "Luau/SolverStats.h"
 #include "Luau/TypeArena.h"
 
 #include <algorithm>

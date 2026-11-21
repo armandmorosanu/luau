@@ -1,4 +1,5 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
+#include "Luau/SolverStats.h"
 #include "Luau/ConstraintGenerator.h"
 
 #include "Luau/Ast.h"
@@ -372,6 +373,7 @@ ConstraintSet ConstraintGenerator::runOnFragment(const ScopePtr& resumeScope, As
 
 void ConstraintGenerator::visitModuleRoot(AstStatBlock* block)
 {
+    ::Luau::stats::Timer statsTimer(::Luau::stats::TGenerate);
     LUAU_TIMETRACE_SCOPE("ConstraintGenerator::visitModuleRoot", "Typechecking");
 
     LUAU_ASSERT(scopes.empty());

@@ -1,3 +1,4 @@
+#include <typeinfo>
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/Substitution.h"
 
@@ -171,9 +172,21 @@ Tarjan::Tarjan()
     worklist.reserve(FInt::LuauTarjanPreallocationSize);
 }
 
+Tarjan::~Tarjan()
+{
+    if (statsName)
+        statNodes.flush(std::string("tarjan ") + statsName);
+}
+
 void Tarjan::visitChildren(TypeId ty, int index)
 {
     LUAU_ASSERT(ty == log->follow(ty));
+    statsName = typeid(*this).name();
+    statNodes.nodes++;
+    if (ty->persistent)
+        statNodes.persistent++;
+    else if (ty->owningArena != statsArena)
+        statNodes.frozen++;
 
     if (ignoreChildrenVisit(ty))
         return;
@@ -296,6 +309,12 @@ void Tarjan::visitChildren(TypeId ty, int index)
 void Tarjan::visitChildren(TypePackId tp, int index)
 {
     LUAU_ASSERT(tp == log->follow(tp));
+    statsName = typeid(*this).name();
+    statNodes.nodes++;
+    if (tp->persistent)
+        statNodes.persistent++;
+    else if (tp->owningArena != statsArena)
+        statNodes.frozen++;
 
     if (ignoreChildrenVisit(tp))
         return;
@@ -595,6 +614,7 @@ Substitution::Substitution(TypeArena* arena)
 Substitution::Substitution(const TxnLog* log_, TypeArena* arena)
     : arena(arena)
 {
+    statsArena = arena;
     log = log_;
     LUAU_ASSERT(log);
 }
