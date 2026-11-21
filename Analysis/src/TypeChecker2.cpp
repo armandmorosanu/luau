@@ -835,6 +835,17 @@ void TypeChecker2::visit(AstStatReturn* ret)
         else
         {
             actualTail = lookupPack(lastExpr);
+
+            // A call returning `...T` fills a fixed return list the way it fills `local a: T = f()`:
+            // each missing value is read from the variadic, and nothing is left over.
+            auto [callHead, callTail] = flatten(*actualTail);
+            auto [expectedHead, expectedTail] = flatten(expectedRetType);
+            const size_t wanted = expectedHead.size() - std::min(expectedHead.size(), ret->list.size - 1);
+            if (!expectedTail && callTail && get<VariadicTypePack>(follow(*callTail)) && callHead.size() < wanted)
+            {
+                TypePack filled = extendTypePack(*module->internalTypes, builtinTypes, *actualTail, wanted);
+                actualTail = module->internalTypes->addTypePack(TypePack{std::move(filled.head)});
+            }
         }
     }
     else

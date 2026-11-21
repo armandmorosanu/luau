@@ -1143,12 +1143,10 @@ TEST_CASE_FIXTURE(Fixture, "unify_variadic_tails_in_arguments_free")
 
     LUAU_REQUIRE_ERROR_COUNT(1, result);
     if (!FFlag::DebugLuauForceOldSolver)
-    {
         CHECK(
-            toString(result.errors.at(0)) == "Expected this to be 'boolean', but got '...number'; \n"
-                                             "the type pack's tail is `...number`, which is not a subtype of `boolean`"
+            toString(result.errors.at(0)) == "Expected this to be 'boolean', but got 'number'; \n"
+                                             "Expected the 1st type pack entry to be `boolean`, but got `number`"
         );
-    }
     else
         CHECK_EQ(toString(result.errors[0]), "Expected this to be 'boolean', but got 'number'");
 }
@@ -1245,6 +1243,20 @@ TEST_CASE_FIXTURE(Fixture, "shorter_return_still_errors_for_required_slots")
         end
     )");
     LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "returning_a_variadic_call_fills_a_fixed_return_list")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        local function many(...: number): ...number return ... end
+        local function one(): number return many(1) end
+        local function two(): (number, number?) return many(1, 2) end
+        local function wrong(): string return many(1) end
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+    CHECK(result.errors[0].location.begin.line == 4);
 }
 
 TEST_SUITE_END();
