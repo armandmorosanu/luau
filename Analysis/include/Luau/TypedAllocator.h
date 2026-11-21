@@ -63,6 +63,17 @@ public:
         return false;
     }
 
+    template<typename F>
+    void forEach(F f)
+    {
+        for (T* block : stuff)
+        {
+            size_t blockSize = (block == stuff.back()) ? currentBlockSize : kBlockSize;
+            for (size_t i = 0; i < blockSize; ++i)
+                f(block + i);
+        }
+    }
+
     bool empty() const
     {
         return stuff.empty();

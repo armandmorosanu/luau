@@ -1754,7 +1754,7 @@ void Frontend::checkSCCBuildQueueItem(BuildQueueItem& item)
 
     // Freeze each module's interface types
     for (BuildQueueModuleInfo& moduleInfo : item.modules)
-        freeze(moduleInfo.module->interfaceTypes);
+        seal(moduleInfo.module->interfaceTypes);
 
     // Check for top-level accesses to cyclic peer modules
     if (FFlag::LuauCyclicRequireTopLevelAccessError)
@@ -1910,7 +1910,7 @@ void Frontend::checkBuildQueueItem(BuildQueueItem& item)
         // types out of internalTypes, so we unfreeze it here.
         unfreeze(module->interfaceTypes);
         copyErrors(module->errors, module->interfaceTypes, builtinTypes);
-        freeze(module->interfaceTypes);
+        seal(module->interfaceTypes);
 
         module->internalTypes->clear();
         module->defArena.allocator.clear();
@@ -2560,7 +2560,7 @@ double feT_clonePublic = TimeTrace::getClock();
     // never in the position of dealing with a FreeType.  They should all be
     // bound to something by the time constraints are solved.
     freeze(*module->internalTypes);
-    freeze(module->interfaceTypes);
+    seal(module->interfaceTypes);
 
     return module;
 }

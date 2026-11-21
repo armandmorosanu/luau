@@ -66,10 +66,16 @@ struct InstanceCollector : TypeOnceVisitor
             st::add(st::CICForeign);
     }
 
+    // Other modules' arenas can hold stuck type function instances (a nonstrict module exports
+    // them unreported); reducing them where they are used reports their errors there, so only
+    // sealed arenas with none reachable are skipped (walkcut check, nt src).
     template<typename T>
     bool foreign(T t) const
     {
-        return !cutsOff && !walkcut::cutsDisabled() && (t->persistent || t->owningArena != arena);
+        if (cutsOff || walkcut::cutsDisabled())
+            return false;
+        const TypeArena* a = t->owningArena;
+        return t->persistent || (a != arena && a && a->sealed && !a->instancesReachable);
     }
 
     // walkcut: the shadow walks what this walk cut.

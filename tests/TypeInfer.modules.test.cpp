@@ -1546,4 +1546,43 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "findAstAncestryOfPosition_descends_into_AstT
     CHECK(tr->name == "EmptyTable");
 }
 
+// A nonstrict module exports stuck type function instances without reporting them; the strict
+// module that uses them reduces them and reports there. Walks that skipped other modules' arenas
+// lost one of the two errors.
+TEST_CASE_FIXTURE(BuiltinsFixture, "stuck_instances_from_nonstrict_module_are_reduced_where_used")
+{
+    if (FFlag::DebugLuauForceOldSolver)
+        return;
+
+    fileResolver.source["game/A"] = R"(
+        --!nonstrict
+        local M = {}
+        function M.g(map)
+            local function allowed(f)
+                return map.floors[f - 1].key ~= nil
+            end
+            return allowed
+        end
+        return M
+    )";
+
+    fileResolver.source["game/B"] = R"(
+        --!strict
+        local A = require(game.A)
+        local map = { floors = { { key = {} }, { key = {} } } }
+        A.g(map, { tiles = {} })
+    )";
+
+    getFrontend().check("game/A");
+    CheckResult result = getFrontend().check("game/B");
+    size_t operatorErrors = 0;
+    for (const TypeError& e : result.errors)
+    {
+        bool isOperatorError = toString(e).find("Operator '-' could not") != std::string::npos;
+        if (e.moduleName == "game/B" && isOperatorError)
+            ++operatorErrors;
+    }
+    CHECK(operatorErrors == 2);
+}
+
 TEST_SUITE_END();

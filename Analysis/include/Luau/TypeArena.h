@@ -20,6 +20,12 @@ struct TypeArena
     // Owning module, if any
     Module* owningModule = nullptr;
 
+    // Set by seal(): no type is added or changed until unfreeze(). instancesReachable: some type
+    // function instance or pending expansion is reachable from here, other than through
+    // persistent types.
+    bool sealed = false;
+    bool instancesReachable = true;
+
     bool collectSingletonStats = false;
     size_t boolSingletonsMinted = 0;
     size_t strSingletonsMinted = 0;
@@ -71,5 +77,8 @@ struct TypeArena
 
 void freeze(TypeArena& arena);
 void unfreeze(TypeArena& arena);
+// Freezes an arena that no later check changes, so walks may skip it if nothing they look for is
+// reachable from it.
+void seal(TypeArena& arena);
 
 } // namespace Luau

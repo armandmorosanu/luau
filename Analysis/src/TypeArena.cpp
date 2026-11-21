@@ -2,6 +2,9 @@
 
 #include "Luau/TypeArena.h"
 
+#include "Luau/RecursionCounter.h"
+#include "Luau/VisitType.h"
+
 LUAU_FASTFLAGVARIABLE(DebugLuauFreezeArena);
 
 namespace Luau
@@ -146,11 +149,97 @@ void freeze(TypeArena& arena)
 
 void unfreeze(TypeArena& arena)
 {
+    arena.sealed = false;
     if (!FFlag::DebugLuauFreezeArena)
         return;
 
     arena.types.unfreeze();
     arena.typePacks.unfreeze();
+}
+
+namespace
+{
+
+struct InstanceFinder : TypeOnceVisitor
+{
+    const TypeArena* arena;
+    bool found = false;
+
+    explicit InstanceFinder(const TypeArena* arena)
+        : TypeOnceVisitor("InstanceFinder", /* skipBoundTypes */ false)
+        , arena(arena)
+    {
+    }
+
+    template<typename T>
+    void check(T t)
+    {
+        try
+        {
+            traverse(t);
+        }
+        catch (RecursionLimitException&)
+        {
+            found = true;
+        }
+    }
+
+    template<typename T>
+    bool enter(T t) const
+    {
+        if (found || t->persistent)
+            return false;
+        const TypeArena* a = t->owningArena;
+        return a == arena || !a || !a->sealed || a->instancesReachable;
+    }
+
+    bool visit(TypeId ty) override
+    {
+        return enter(ty);
+    }
+    bool visit(TypePackId tp) override
+    {
+        return enter(tp);
+    }
+    bool visit(TypeId, const PendingExpansionType&) override
+    {
+        found = true;
+        return false;
+    }
+    bool visit(TypeId, const TypeFunctionInstanceType&) override
+    {
+        found = true;
+        return false;
+    }
+    bool visit(TypePackId, const TypeFunctionInstanceTypePack&) override
+    {
+        found = true;
+        return false;
+    }
+};
+
+} // namespace
+
+void seal(TypeArena& arena)
+{
+    freeze(arena);
+    InstanceFinder finder{&arena};
+    arena.types.forEach(
+        [&](Type* t)
+        {
+            if (!finder.found)
+                finder.check(TypeId(t));
+        }
+    );
+    arena.typePacks.forEach(
+        [&](TypePackVar* tp)
+        {
+            if (!finder.found)
+                finder.check(TypePackId(tp));
+        }
+    );
+    arena.instancesReachable = finder.found;
+    arena.sealed = true;
 }
 
 } // namespace Luau
