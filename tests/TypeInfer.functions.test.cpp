@@ -4765,4 +4765,28 @@ TEST_CASE_FIXTURE(Fixture, "extend_typepack_bound_indirection_preserves_referenc
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "fixed_arity_function_with_optional_params_is_a_variadic_callback")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        local make: (number?, number?) -> number = function(a, b) return (a or 0) + (b or 0) end
+        local function take(ctor: (...number) -> number) return ctor(1, 2) end
+        take(make)
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "fixed_arity_function_with_required_params_is_not_a_variadic_callback")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        local make: (number, number) -> number = function(a, b) return a + b end
+        local function take(ctor: (...number) -> number) return ctor(1, 2) end
+        take(make)
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(1, result);
+}
+
 TEST_SUITE_END();

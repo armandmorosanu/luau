@@ -2558,6 +2558,23 @@ SubtypingResult Subtyping::isCovariantWith(
                 result.orElse(isContravariantWith(env, subFunction->argTypes, arena->addTypePack(TypePack{arguments}), scope)
                                   .withBothComponent(TypePath::PackField::Arguments));
             }
+            // A callee without varargs drops extra arguments and reads missing ones as nil:
+            // (A?, A?) -> R accepts calls as (...A) -> R, which pass each declared argument as A?.
+            // Not for generic callees: overload resolution would bind their generics to A?.
+            else if (variadic && subFunction->generics.empty() && subFunction->genericPacks.empty())
+            {
+                auto [subArguments, subTail] = flatten(subFunction->argTypes);
+                if (!subTail && subArguments.size() > arguments.size())
+                {
+                    TypeId optional = arena->addType(UnionType{{variadic->ty, builtinTypes->nilType}});
+                    while (arguments.size() < subArguments.size())
+                        arguments.push_back(optional);
+                    // the padded pack isn't the real one, so its failure reasoning would carry invalid paths
+                    SubtypingResult padded = isContravariantWith(env, subFunction->argTypes, arena->addTypePack(TypePack{arguments}), scope);
+                    if (padded.isSubtype)
+                        result = std::move(padded);
+                }
+            }
         }
     }
 
