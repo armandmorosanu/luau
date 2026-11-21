@@ -4082,4 +4082,19 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "method_call_on_any_refined_by_typeof")
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "upvalue_refined_on_the_right_of_or_stays_refined")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        local flag = math.random() > 0.5
+        local p: { name: string }? = nil
+        local function f()
+            if flag or p == nil then return end
+            print(p.name)
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

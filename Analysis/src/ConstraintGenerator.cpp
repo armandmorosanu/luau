@@ -597,7 +597,12 @@ std::optional<TypeId> ConstraintGenerator::lookup(const ScopePtr& scope, Locatio
             res = makeUnion(scope, location, res, *ty);
         }
 
-        scope->lvalueTypes[def] = res;
+        // A capture first read in a child scope (the right of `or`, a branch) must stay bound for the rest of
+        // the function, or later reads prototype a fresh union that the child's refinements never reach.
+        Scope* functionScope = scope.get();
+        while (functionScope->parent && functionScope->parent->returnType == functionScope->returnType)
+            functionScope = functionScope->parent.get();
+        functionScope->lvalueTypes[def] = res;
         return res;
     }
     else
