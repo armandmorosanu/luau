@@ -640,24 +640,7 @@ std::optional<TypeId> Substitution::substitute(TypeId ty)
     if (result != TarjanResult::Ok)
         return std::nullopt;
 
-    for (auto [oldTy, newTy] : newTypes)
-    {
-        if (!ignoreChildren(oldTy) && !replacedTypes.contains(newTy))
-        {
-            if (!noTraverseTypes.contains(newTy))
-                replaceChildren(newTy);
-            replacedTypes.insert(newTy);
-        }
-    }
-    for (auto [oldTp, newTp] : newPacks)
-    {
-        if (!ignoreChildren(oldTp) && !replacedTypePacks.contains(newTp))
-        {
-            if (!noTraverseTypePacks.contains(newTp))
-                replaceChildren(newTp);
-            replacedTypePacks.insert(newTp);
-        }
-    }
+    replacePending();
     TypeId newTy = replace(ty);
     return newTy;
 }
@@ -673,26 +656,45 @@ std::optional<TypePackId> Substitution::substitute(TypePackId tp)
     if (result != TarjanResult::Ok)
         return std::nullopt;
 
-    for (auto [oldTy, newTy] : newTypes)
-    {
-        if (!ignoreChildren(oldTy) && !replacedTypes.contains(newTy))
-        {
-            if (!noTraverseTypes.contains(newTy))
-                replaceChildren(newTy);
-            replacedTypes.insert(newTy);
-        }
-    }
-    for (auto [oldTp, newTp] : newPacks)
-    {
-        if (!ignoreChildren(oldTp) && !replacedTypePacks.contains(newTp))
-        {
-            if (!noTraverseTypePacks.contains(newTp))
-                replaceChildren(newTp);
-            replacedTypePacks.insert(newTp);
-        }
-    }
+    replacePending();
     TypePackId newTp = replace(tp);
     return newTp;
+}
+
+void Substitution::replacePending()
+{
+    // replaceChildren only looks up newTypes, so the order of these rewrites does not matter
+    size_t kept = 0;
+    for (auto [oldTy, newTy] : unreplacedTypes)
+    {
+        if (replacedTypes.contains(newTy))
+            continue;
+        if (ignoreChildren(oldTy))
+        {
+            unreplacedTypes[kept++] = {oldTy, newTy};
+            continue;
+        }
+        if (!noTraverseTypes.contains(newTy))
+            replaceChildren(newTy);
+        replacedTypes.insert(newTy);
+    }
+    unreplacedTypes.resize(kept);
+
+    kept = 0;
+    for (auto [oldTp, newTp] : unreplacedPacks)
+    {
+        if (replacedTypePacks.contains(newTp))
+            continue;
+        if (ignoreChildren(oldTp))
+        {
+            unreplacedPacks[kept++] = {oldTp, newTp};
+            continue;
+        }
+        if (!noTraverseTypePacks.contains(newTp))
+            replaceChildren(newTp);
+        replacedTypePacks.insert(newTp);
+    }
+    unreplacedPacks.resize(kept);
 }
 
 void Substitution::resetState(const TxnLog* log, TypeArena* arena)
@@ -703,6 +705,8 @@ void Substitution::resetState(const TxnLog* log, TypeArena* arena)
 
     newTypes.clear();
     newPacks.clear();
+    unreplacedTypes.clear();
+    unreplacedPacks.clear();
     replacedTypes.clear();
     replacedTypePacks.clear();
 
@@ -756,10 +760,9 @@ void Substitution::foundDirty(TypeId ty)
     if (newTypes.contains(ty))
         return;
 
-    if (isDirty(ty))
-        newTypes[ty] = follow(clean(ty));
-    else
-        newTypes[ty] = follow(clone(ty));
+    TypeId newTy = isDirty(ty) ? follow(clean(ty)) : follow(clone(ty));
+    newTypes[ty] = newTy;
+    unreplacedTypes.emplace_back(ty, newTy);
 }
 
 void Substitution::foundDirty(TypePackId tp)
@@ -769,10 +772,9 @@ void Substitution::foundDirty(TypePackId tp)
     if (newPacks.contains(tp))
         return;
 
-    if (isDirty(tp))
-        newPacks[tp] = follow(clean(tp));
-    else
-        newPacks[tp] = follow(clone(tp));
+    TypePackId newTp = isDirty(tp) ? follow(clean(tp)) : follow(clone(tp));
+    newPacks[tp] = newTp;
+    unreplacedPacks.emplace_back(tp, newTp);
 }
 
 TypeId Substitution::replace(TypeId ty)

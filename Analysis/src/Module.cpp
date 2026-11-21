@@ -152,12 +152,16 @@ struct ClonePublicInterface : Substitution
         return tp->owningArena == module->internalTypes.get();
     }
 
+    // A type an earlier substitute() call already cloned is a leaf: walking its subgraph again for
+    // each exported binding is quadratic (the definitions module's classes reach each other). Every
+    // newTypes key passes isDirty (foreign types are never walked into), so the walk still marks
+    // it dirty and its parents still get cloned.
     bool ignoreChildrenVisit(TypeId ty) override
     {
         if (ty->owningArena != module->internalTypes.get())
             return true;
 
-        return false;
+        return newTypes.contains(ty);
     }
 
     bool ignoreChildrenVisit(TypePackId tp) override
@@ -165,7 +169,7 @@ struct ClonePublicInterface : Substitution
         if (tp->owningArena != module->internalTypes.get())
             return true;
 
-        return false;
+        return newPacks.contains(tp);
     }
 
     TypeId clean(TypeId ty) override

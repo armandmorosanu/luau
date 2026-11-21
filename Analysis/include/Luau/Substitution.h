@@ -257,6 +257,12 @@ protected:
 private:
     template<typename Ty>
     std::optional<Ty> replace(std::optional<Ty> ty);
+
+    // newTypes and newPacks entries whose clean type substitute() has not yet rewritten: a scan of
+    // all of newTypes on each call is quadratic in an object reused across a module's types
+    std::vector<std::pair<TypeId, TypeId>> unreplacedTypes;
+    std::vector<std::pair<TypePackId, TypePackId>> unreplacedPacks;
+    void replacePending();
 };
 
 } // namespace Luau
