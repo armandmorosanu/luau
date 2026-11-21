@@ -16,6 +16,7 @@ option(LUAU_BUILD_SHARED "Build as a shared library" OFF)
 
 # Compile time options for Luau features
 option(LUAU_VECTOR_DOUBLE "Use 64-bit doubles for vector components" OFF)
+option(LUAU_CHECK_WALK_CUTS "Check the new solver's type-walk cuts (slow)" OFF)
 option(LUAU_VECTOR_FOUR_WIDE "Enable 4-wide mode for vectors, adding a 'w' component" OFF)
 
 if(LUAU_BUILD_SHARED AND NOT LUAU_EXTERN_C)
@@ -217,6 +218,10 @@ if(LUAU_EXTERN_C)
         target_compile_definitions(Luau.Compiler PUBLIC "LUACODE_API=extern \"C\"")
         target_compile_definitions(Luau.CodeGen PUBLIC "LUACODEGEN_API=extern \"C\"")
     endif()
+endif()
+
+if(LUAU_CHECK_WALK_CUTS)
+    target_compile_definitions(Luau.Analysis PUBLIC LUAU_CHECK_WALK_CUTS=1)
 endif()
 
 if(LUAU_VECTOR_DOUBLE)

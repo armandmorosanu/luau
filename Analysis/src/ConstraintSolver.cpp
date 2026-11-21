@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/SolverStats.h"
+#include "Luau/WalkCutCheck.h"
 #include "Luau/ConstraintSolver.h"
 
 #include "Luau/Anyification.h"
@@ -316,25 +317,70 @@ struct InstantiationQueuer : IterativeTypeVisitor
     template<typename T>
     bool foreign(T t) const
     {
-        return t->persistent || t->owningArena != solver->arena;
+        return !cutsOff && !walkcut::cutsDisabled() && (t->persistent || t->owningArena != solver->arena);
+    }
+
+    // walkcut: the shadow walks what this walk cut, and records instead of queueing.
+    bool cutsOff = false;
+    std::vector<TypeId> missed;
+    std::unique_ptr<InstantiationQueuer> shadow;
+
+    template<typename T>
+    bool cut(T t)
+    {
+        if (!foreign(t))
+            return false;
+        if constexpr (walkcut::enabled)
+        {
+            if (!shadow)
+            {
+                shadow = std::make_unique<InstantiationQueuer>(scope, location, solver, moduleName);
+                shadow->cutsOff = true;
+            }
+            walkcut::noteCut(walkcut::InstantiationQueuer);
+            shadow->run(t);
+        }
+        return true;
+    }
+
+    void checkCuts()
+    {
+        if constexpr (walkcut::enabled)
+        {
+            if (!shadow)
+                return;
+            for (TypeId ty : shadow->missed)
+            {
+                walkcut::noteHit(walkcut::InstantiationQueuer);
+                bool queued = solver->typeAliasesToExpand.contains(ty);
+                queued = queued || solver->typeFunctionsToFinalize.contains(ty);
+                if (!queued)
+                    walkcut::fire(walkcut::InstantiationQueuer, ty, solver->arena);
+            }
+        }
     }
 
     bool visit(TypeId ty) override
     {
         countNode(ty);
-        return !foreign(ty);
+        return !cut(ty);
     }
 
     bool visit(TypePackId tp) override
     {
         countNode(tp);
-        return !foreign(tp);
+        return !cut(tp);
     }
 
     bool visit(TypeId ty, const PendingExpansionType& petv) override
     {
         if (!solver->typeAliasesToExpand.contains(ty))
         {
+            if (cutsOff)
+            {
+                missed.push_back(ty);
+                return false;
+            }
             if (FFlag::LuauCyclicRequireTypeInference)
                 solver->typeAliasesToExpand[ty] = solver->pushConstraint(scope, location, TypeAliasExpansionConstraint{ty}, moduleName);
             else
@@ -348,6 +394,11 @@ struct InstantiationQueuer : IterativeTypeVisitor
     {
         if (!solver->typeFunctionsToFinalize.contains(ty))
         {
+            if (cutsOff)
+            {
+                missed.push_back(ty);
+                return true;
+            }
             if (FFlag::LuauCyclicRequireTypeInference)
                 solver->typeFunctionsToFinalize[ty] = solver->pushConstraint(scope, location, ReduceConstraint{ty}, moduleName);
             else
@@ -377,14 +428,50 @@ struct InfiniteTypeFinder : IterativeTypeVisitor
     {
     }
 
+    // walkcut: the shadow walks the persistent types this walk cut.
+    bool cutsOff = false;
+    std::unique_ptr<InfiniteTypeFinder> shadow;
+
+    template<typename T>
+    bool keep(T t)
+    {
+        if (foundInfiniteType)
+            return false;
+        if (cutsOff || walkcut::cutsDisabled() || !t->persistent)
+            return true;
+        if constexpr (walkcut::enabled)
+        {
+            if (!shadow)
+            {
+                shadow = std::make_unique<InfiniteTypeFinder>(solver.get(), signature, scope);
+                shadow->cutsOff = true;
+            }
+            walkcut::noteCut(walkcut::InfiniteTypeFinder);
+            shadow->run(t);
+        }
+        return false;
+    }
+
+    void checkCuts()
+    {
+        if constexpr (walkcut::enabled)
+        {
+            if (!shadow || !shadow->foundInfiniteType)
+                return;
+            walkcut::noteHit(walkcut::InfiniteTypeFinder);
+            if (!foundInfiniteType)
+                walkcut::fire(walkcut::InfiniteTypeFinder, "an infinite type alias expansion");
+        }
+    }
+
     bool visit(TypeId ty) override
     {
-        return !foundInfiniteType && !ty->persistent;
+        return keep(ty);
     }
 
     bool visit(TypePackId tp) override
     {
-        return !foundInfiniteType && !tp->persistent;
+        return keep(tp);
     }
 
     bool visit(TypeId ty, const PendingExpansionType& petv) override
@@ -1300,6 +1387,7 @@ bool ConstraintSolver::tryDispatch(const NameConstraint& c, NotNull<const Constr
 
         InfiniteTypeFinder itf{this, signature, constraint->scope};
         itf.run(target);
+        itf.checkCuts();
 
         if (itf.foundInfiniteType)
         {
@@ -1495,6 +1583,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
     // catch the infinite expansion before actually trying to expand it.
     InfiniteTypeFinder itf{this, signature, constraint->scope};
     itf.run(tf->type);
+    itf.checkCuts();
 
     if (itf.foundInfiniteType)
     {
@@ -1545,6 +1634,7 @@ bool ConstraintSolver::tryDispatch(const TypeAliasExpansionConstraint& c, NotNul
         queuer.run(arg);
     for (TypePackId arg : packArguments)
         queuer.run(arg);
+    queuer.checkCuts();
 
     if (target->persistent || target->owningArena != arena)
     {
@@ -1907,6 +1997,7 @@ bool ConstraintSolver::tryDispatch(const FunctionCallConstraint& c, NotNull<cons
     queuer.run(overloadToUse);
     queuer.run(argsPack);
     queuer.run(result);
+    queuer.checkCuts();
 
     return true;
 }

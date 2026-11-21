@@ -4,6 +4,7 @@
 #include "Luau/SolverStats.h"
 #include "Luau/TypeFunction.h"
 #include "Luau/VisitType.h"
+#include "Luau/WalkCutCheck.h"
 
 LUAU_FASTFLAGVARIABLE(LuauReferenceCountInitializerIsIterative)
 
@@ -120,9 +121,51 @@ bool ReferenceCountInitializer::visit(TypeId ty, const PendingExpansionType&)
     return false;
 }
 
+bool ReferenceCountInitializer::cut(TypeId ty)
+{
+    if (cutsOff || walkcut::cutsDisabled() || ty->owningArena == currentArena)
+        return false;
+    if constexpr (walkcut::enabled)
+    {
+        if (!shadow)
+        {
+            shadowTypes = std::make_unique<TypeIds>();
+            shadowTypePacks = std::make_unique<TypePackIds>();
+            shadow = std::make_unique<ReferenceCountInitializer>(
+                currentArena, NotNull{shadowTypes.get()}, NotNull{shadowTypePacks.get()}
+            );
+            shadow->cutsOff = true;
+        }
+        walkcut::noteCut(walkcut::ReferenceCountInitializer);
+        shadow->run(ty);
+    }
+    return true;
+}
+
+void ReferenceCountInitializer::checkCuts()
+{
+    if constexpr (walkcut::enabled)
+    {
+        if (!shadow)
+            return;
+        for (TypeId ty : *shadowTypes)
+        {
+            walkcut::noteHit(walkcut::ReferenceCountInitializer);
+            if (!mutatedTypes->contains(ty))
+                walkcut::fire(walkcut::ReferenceCountInitializer, ty);
+        }
+        for (TypePackId tp : *shadowTypePacks)
+        {
+            walkcut::noteHit(walkcut::ReferenceCountInitializer);
+            if (!mutatedTypePacks->contains(tp))
+                walkcut::fire(walkcut::ReferenceCountInitializer, tp);
+        }
+    }
+}
+
 bool ReferenceCountInitializer::visit(TypeId ty, const TableType& tt)
 {
-    if (ty->owningArena != currentArena)
+    if (cut(ty))
         return false;
     if (tt.state == TableState::Unsealed || tt.state == TableState::Free)
         mutatedTypes->insert(ty);
@@ -138,7 +181,7 @@ bool ReferenceCountInitializer::visit(TypeId ty, const ExternType&)
 
 bool ReferenceCountInitializer::visit(TypeId ty, const TypeFunctionInstanceType& tfit)
 {
-    if (ty->owningArena != currentArena)
+    if (cut(ty))
         return false;
     return tfit.function->canReduceGenerics;
 }
@@ -276,6 +319,7 @@ std::pair<TypeIds, TypePackIds> Constraint::getMaybeMutatedTypesIn(NotNull<TypeA
         rci.run(ptc->targetType);
     }
 
+    rci.checkCuts();
     return {std::move(types), std::move(typePacks)};
 }
 

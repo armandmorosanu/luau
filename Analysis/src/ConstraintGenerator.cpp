@@ -1,5 +1,6 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 #include "Luau/SolverStats.h"
+#include "Luau/WalkCutCheck.h"
 #include "Luau/ConstraintGenerator.h"
 
 #include "Luau/Ast.h"
@@ -800,14 +801,53 @@ struct FindSimplificationBlockers : IterativeTypeVisitor
     {
     }
 
+    // walkcut: the shadow walks the persistent types this walk cut.
+    bool cutsOff = false;
+    std::unique_ptr<FindSimplificationBlockers> shadow;
+
+    template<typename T>
+    bool keep(T t)
+    {
+        if (found)
+            return false;
+        if (cutsOff || walkcut::cutsDisabled() || !t->persistent)
+            return true;
+        if constexpr (walkcut::enabled)
+        {
+            if (!shadow)
+            {
+                shadow = std::make_unique<FindSimplificationBlockers>();
+                shadow->cutsOff = true;
+            }
+            walkcut::noteCut(walkcut::FindSimplificationBlockers);
+            shadow->run(t);
+        }
+        return false;
+    }
+
+    void checkCuts()
+    {
+        if constexpr (walkcut::enabled)
+        {
+            if (!shadow || !shadow->found)
+                return;
+            walkcut::noteHit(walkcut::FindSimplificationBlockers);
+            if (!found)
+            {
+                const char* what = "a blocked, free or pending type";
+                walkcut::fire(walkcut::FindSimplificationBlockers, what);
+            }
+        }
+    }
+
     bool visit(TypeId ty) override
     {
-        return !found && !ty->persistent;
+        return keep(ty);
     }
 
     bool visit(TypePackId tp) override
     {
-        return !found && !tp->persistent;
+        return keep(tp);
     }
 
     bool visit(TypeId, const BlockedType&) override
@@ -845,6 +885,7 @@ bool mustDeferIntersection(TypeId ty)
 {
     FindSimplificationBlockers bts;
     bts.run(ty);
+    bts.checkCuts();
     return bts.found;
 }
 } // namespace

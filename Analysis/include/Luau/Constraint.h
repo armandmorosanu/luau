@@ -396,6 +396,15 @@ struct ReferenceCountInitializer : IterativeTypeVisitor
 
     explicit ReferenceCountInitializer(NotNull<TypeArena> currentArena, NotNull<TypeIds> mutatedTypes, NotNull<TypePackIds> mutatedTypePacks);
 
+    // walkcut: the shadow walks the other arenas' tables and type functions this walk cut.
+    // Call checkCuts() after the last run(), while the result sets are still in place.
+    bool cutsOff = false;
+    std::unique_ptr<TypeIds> shadowTypes;
+    std::unique_ptr<TypePackIds> shadowTypePacks;
+    std::unique_ptr<ReferenceCountInitializer> shadow;
+    bool cut(TypeId ty);
+    void checkCuts();
+
     bool visit(TypeId ty) override;
 
     bool visit(TypeId ty, const FreeType&) override;

@@ -294,6 +294,7 @@ target_sources(Luau.Analysis PRIVATE
     Analysis/include/Luau/UnifierSharedState.h
     Analysis/include/Luau/UserDefinedTypeFunction.h
     Analysis/include/Luau/VisitType.h
+    Analysis/include/Luau/WalkCutCheck.h
     Analysis/include/Luau/IterativeTypeVisitor.h
     Analysis/include/Luau/IterativeTypeFunctionTypeVisitor.h
     Analysis/include/Luau/ConstraintGraph.h

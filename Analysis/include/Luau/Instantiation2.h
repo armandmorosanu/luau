@@ -3,6 +3,7 @@
 
 #include "Luau/NotNull.h"
 #include "Luau/Substitution.h"
+#include "Luau/WalkCutCheck.h"
 #include "Luau/Subtyping.h"
 #include "Luau/TxnLog.h"
 #include "Luau/TypeFwd.h"
@@ -79,6 +80,10 @@ private:
     // Arenas holding a replaced generic; types in other arenas (other modules) cannot reach one.
     std::vector<const TypeArena*> owners;
     bool unreachableArena(const TypeArena* a) const;
+    bool cutsOff = false;
+    std::unique_ptr<walkcut::SubstitutionCutChecker> cutChecker;
+    template<typename T>
+    void checkCut(T t);
     /**
      * It is *very* easy to create the world's worst bug by using a bound type
      * as key: this is a helper function we run in debug mode to confirm this

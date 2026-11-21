@@ -34,12 +34,27 @@ Replacer::Replacer(
 
 bool Replacer::unreachableArena(const TypeArena* a) const
 {
+    if (cutsOff || walkcut::cutsDisabled())
+        return false;
     return a != arena && std::find(owners.begin(), owners.end(), a) == owners.end();
+}
+
+template<typename T>
+void Replacer::checkCut(T t)
+{
+    if (!cutChecker)
+        cutChecker =
+            std::make_unique<walkcut::SubstitutionCutChecker>(*this, cutsOff, walkcut::Replacer);
+    cutChecker->check(t);
 }
 
 bool Replacer::ignoreChildren(TypePackId tp)
 {
-    return unreachableArena(tp->owningArena);
+    if (!unreachableArena(tp->owningArena))
+        return false;
+    if constexpr (walkcut::enabled)
+        checkCut(tp);
+    return true;
 }
 
 bool Replacer::isDirty(TypeId ty)
@@ -70,8 +85,15 @@ TypePackId Replacer::clean(TypePackId tp)
 
 bool Replacer::ignoreChildren(TypeId ty)
 {
-    if (get<ExternType>(ty) || unreachableArena(ty->owningArena))
+    if (get<ExternType>(ty))
         return true;
+
+    if (unreachableArena(ty->owningArena))
+    {
+        if constexpr (walkcut::enabled)
+            checkCut(ty);
+        return true;
+    }
 
     if (auto ftv = get<FunctionType>(ty))
     {

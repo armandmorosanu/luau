@@ -18,6 +18,7 @@
 #include "Luau/TypePack.h"
 #include "Luau/TypePath.h"
 #include "Luau/TypeUtils.h"
+#include "Luau/WalkCutCheck.h"
 
 LUAU_DYNAMIC_FASTINTVARIABLE(LuauSubtypingRecursionLimit, 100)
 
@@ -479,8 +480,23 @@ struct ApplyMappedGenerics : Substitution
     template<typename T>
     bool unreachableArena(T t) const
     {
-        return !t->persistent && t->owningArena != arena.get() &&
-               std::find(owners.begin(), owners.end(), t->owningArena) == owners.end();
+        if (cutsOff || walkcut::cutsDisabled() || t->persistent || t->owningArena == arena.get())
+            return false;
+        return std::find(owners.begin(), owners.end(), t->owningArena) == owners.end();
+    }
+
+    bool cutsOff = false;
+    std::unique_ptr<walkcut::SubstitutionCutChecker> cutChecker;
+
+    template<typename T>
+    void checkCut(T t)
+    {
+        if (!cutChecker)
+        {
+            walkcut::Walk w = walkcut::ApplyMappedGenerics;
+            cutChecker = std::make_unique<walkcut::SubstitutionCutChecker>(*this, cutsOff, w);
+        }
+        cutChecker->check(t);
     }
 
     bool isDirty(TypeId ty) override
@@ -554,8 +570,15 @@ struct ApplyMappedGenerics : Substitution
             st::add(st::CAmgPersistent);
         else if (ty->owningArena != arena)
             st::add(st::CAmgForeign);
-        if (get<ExternType>(ty) || unreachableArena(ty))
+        if (get<ExternType>(ty))
             return true;
+
+        if (unreachableArena(ty))
+        {
+            if constexpr (walkcut::enabled)
+                checkCut(ty);
+            return true;
+        }
 
         if (const FunctionType* f = get<FunctionType>(ty))
         {
@@ -575,7 +598,13 @@ struct ApplyMappedGenerics : Substitution
     }
     bool ignoreChildren(TypePackId ty) override
     {
-        return ty->persistent || unreachableArena(ty);
+        if (ty->persistent)
+            return true;
+        if (!unreachableArena(ty))
+            return false;
+        if constexpr (walkcut::enabled)
+            checkCut(ty);
+        return true;
     }
 };
 

@@ -1,6 +1,7 @@
 // This file is part of the Luau programming language and is licensed under MIT License; see LICENSE.txt for details
 
 #include "Luau/SolverStats.h"
+#include "Luau/WalkCutCheck.h"
 #include "Luau/TypeFunction.h"
 
 #include "Luau/Common.h"
@@ -68,7 +69,59 @@ struct InstanceCollector : TypeOnceVisitor
     template<typename T>
     bool foreign(T t) const
     {
-        return t->persistent || t->owningArena != arena;
+        return !cutsOff && !walkcut::cutsDisabled() && (t->persistent || t->owningArena != arena);
+    }
+
+    // walkcut: the shadow walks what this walk cut.
+    bool cutsOff = false;
+    std::unique_ptr<InstanceCollector> shadow;
+
+    template<typename T>
+    bool cut(T t)
+    {
+        if (!foreign(t))
+            return false;
+        if constexpr (walkcut::enabled)
+        {
+            if (!shadow)
+            {
+                shadow = std::make_unique<InstanceCollector>(cache);
+                shadow->arena = arena;
+                shadow->cutsOff = true;
+            }
+            walkcut::noteCut(walkcut::InstanceCollector);
+            try
+            {
+                shadow->traverse(t);
+            }
+            catch (RecursionLimitException&)
+            {
+            }
+        }
+        return true;
+    }
+
+    void checkCuts()
+    {
+        if constexpr (walkcut::enabled)
+        {
+            if (!shadow)
+                return;
+            for (size_t i = 0; i < shadow->tys.size(); ++i)
+            {
+                TypeId ty = shadow->tys[i];
+                walkcut::noteHit(walkcut::InstanceCollector);
+                if (!recordedTys.contains(ty))
+                    walkcut::fire(walkcut::InstanceCollector, ty, arena);
+            }
+            for (size_t i = 0; i < shadow->tps.size(); ++i)
+            {
+                TypePackId tp = shadow->tps[i];
+                walkcut::noteHit(walkcut::InstanceCollector);
+                if (!recordedTps.contains(tp))
+                    walkcut::fire(walkcut::InstanceCollector, tp, arena);
+            }
+        }
     }
 
     explicit InstanceCollector(TypeFunctionAbsenceCache* cache)
@@ -80,7 +133,7 @@ struct InstanceCollector : TypeOnceVisitor
     bool visit(TypeId ty) override
     {
         countNode(ty);
-        if (foreign(ty))
+        if (cut(ty))
             return false;
         if (cache)
         {
@@ -96,7 +149,7 @@ struct InstanceCollector : TypeOnceVisitor
     bool visit(TypePackId tp) override
     {
         countNode(tp);
-        if (foreign(tp))
+        if (cut(tp))
             return false;
         if (cache)
         {
@@ -777,6 +830,7 @@ FunctionGraphReductionResult reduceTypeFunctions(
     {
         ::Luau::stats::Timer collectTimer(::Luau::stats::TCollect);
         collector.traverse(entrypoint);
+        collector.checkCuts();
     }
     catch (RecursionLimitException&)
     {
@@ -831,6 +885,7 @@ FunctionGraphReductionResult reduceTypeFunctions(
     {
         ::Luau::stats::Timer collectTimer(::Luau::stats::TCollect);
         collector.traverse(entrypoint);
+        collector.checkCuts();
     }
     catch (RecursionLimitException&)
     {

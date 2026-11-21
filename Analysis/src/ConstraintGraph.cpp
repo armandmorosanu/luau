@@ -429,6 +429,7 @@ ConstraintGraph::UnblockedTypes ConstraintGraph::unblockConstraint(NotNull<const
                     ReferenceCountInitializer rci{NotNull{type->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
                     rci.run(ft->lowerBound);
                     rci.run(ft->upperBound);
+                    rci.checkCuts();
                     // We do not want to _delete_ the original vertex, so we pass nullopt here.
                     copyDependenciesToReachableTypes(std::nullopt, NotNull{sourceDependencies}, std::move(mutatedTypes), std::move(mutatedTypePacks));
                 }
@@ -556,6 +557,7 @@ void ConstraintGraph::shiftReferences(T source, T target)
             TypePackIds mutatedTypePacks;
             ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
             rci.run(target);
+            rci.checkCuts();
             copyDependenciesToReachableTypes(source, NotNull{sourceDependencies}, std::move(mutatedTypes), std::move(mutatedTypePacks));
         }
         // Types in the constraint graph are always dynamically discovered, so
@@ -581,6 +583,7 @@ void ConstraintGraph::shiftReferences(T source, T target)
         {
             ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
             rci.run(target);
+            rci.checkCuts();
         }
         else
         {
@@ -648,6 +651,7 @@ void ConstraintGraph::copyDependenciesOf(T source, T target)
             TypePackIds mutatedTypePacks;
             ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
             rci.run(target);
+            rci.checkCuts();
             // We do not want to _delete_ the original vertex, so we pass nullopt here.
             copyDependenciesToReachableTypes(std::nullopt, NotNull{sourceDependencies}, std::move(mutatedTypes), std::move(mutatedTypePacks));
         }
@@ -663,6 +667,7 @@ void ConstraintGraph::copyDependenciesOf(T source, T target)
         {
             ReferenceCountInitializer rci{NotNull{source->owningArena}, NotNull{&mutatedTypes}, NotNull{&mutatedTypePacks}};
             rci.run(target);
+            rci.checkCuts();
         }
         else
         {
