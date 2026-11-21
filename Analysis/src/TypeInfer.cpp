@@ -3769,7 +3769,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
 
         if (value)
         {
-            DenseHashSet<TypeId> propTypes;
+            TypeIds propTypes;
 
             for (auto table : tableTypes)
             {
@@ -3810,7 +3810,7 @@ TypeId TypeChecker::checkLValueBinding(const ScopePtr& scope, const AstExprIndex
             }
         }
 
-        DenseHashSet<TypeId> resultTypes;
+        TypeIds resultTypes;
 
         for (auto table : tableTypes)
         {
@@ -5531,7 +5531,7 @@ void TypeChecker::merge(RefinementMap& l, const RefinementMap& r)
         [this](TypeId a, TypeId b)
         {
             // TODO: normalize(UnionType{{a, b}})
-            std::unordered_set<TypeId> set;
+            TypeIds set;
 
             if (auto utv = get<UnionType>(follow(a)))
                 set.insert(begin(utv), end(utv));
@@ -6308,8 +6308,8 @@ void TypeChecker::refineLValue(const LValue& lvalue, RefinementMap& refis, const
     auto utv = get<UnionType>(follow(*ty));
     LUAU_ASSERT(utv);
 
-    std::unordered_set<TypeId> viableTargetOptions;
-    std::unordered_set<TypeId> viableChildOptions; // There may be additional refinements that apply. We add those here too.
+    TypeIds viableTargetOptions;
+    TypeIds viableChildOptions; // There may be additional refinements that apply. We add those here too.
 
     for (TypeId option : utv)
     {
@@ -6330,7 +6330,7 @@ void TypeChecker::refineLValue(const LValue& lvalue, RefinementMap& refis, const
         }
     }
 
-    auto intoType = [this](const std::unordered_set<TypeId>& s) -> std::optional<TypeId>
+    auto intoType = [this](const TypeIds& s) -> std::optional<TypeId>
     {
         if (s.empty())
             return std::nullopt;
