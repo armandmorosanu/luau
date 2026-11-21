@@ -40,6 +40,18 @@ struct Quantifier final : TypeOnceVisitor
         return false;
     }
 
+    // Persistent types hold no free types and are never mutated, and luau-lsp persists the whole
+    // definitions graph: walking into it was 98% of this visitor's nodes.
+    bool visit(TypeId ty) override
+    {
+        return !ty->persistent;
+    }
+
+    bool visit(TypePackId tp) override
+    {
+        return !tp->persistent;
+    }
+
     bool visit(TypeId ty, const FreeType& ftv) override
     {
         seenMutableType = true;
