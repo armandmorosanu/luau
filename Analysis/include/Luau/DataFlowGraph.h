@@ -136,6 +136,10 @@ private:
     struct FunctionCapture
     {
         std::vector<DefId> captureDefs;
+        // A capture whose nearest enclosing binding is the enclosing function's own capture of the symbol.
+        DenseHashMap<const Def*, const Def*> outerCaptures;
+        // An assignment to an upvalue adds no version.
+        bool assignedAsUpvalue = false;
         std::vector<DefId> allVersions;
         size_t versionOffset = 0;
     };

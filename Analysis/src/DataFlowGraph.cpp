@@ -8,6 +8,7 @@
 #include "Luau/Error.h"
 #include "Luau/TimeTrace.h"
 
+#include <algorithm>
 #include <optional>
 
 LUAU_FASTFLAG(DebugLuauFreezeArena)
@@ -203,7 +204,13 @@ void DataFlowGraphBuilder::resolveCaptures()
             Phi* phi = const_cast<Phi*>(get<Phi>(captureDef));
             LUAU_ASSERT(phi);
             LUAU_ASSERT(phi->operands.empty());
-            phi->operands = operands;
+            // A symbol never reassigned has one version: a nested capture sees whatever its enclosing function
+            // refined it to, as a capture of a function's own local does.
+            const Def* const* outer = capture.outerCaptures.find(captureDef.get());
+            if (outer && operands.size() == 1 && !capture.assignedAsUpvalue)
+                phi->operands = {NotNull{*outer}};
+            else
+                phi->operands = operands;
         }
     }
 }
@@ -323,6 +330,17 @@ DefId DataFlowGraphBuilder::lookup(Symbol symbol, Location location)
             // uses of `symbol` to this new phi node since it will not get populated.
             if (!outsideLoopScope)
                 scope->bindings[symbol] = captureDef;
+
+            for (DfgScope* outer = current->parent; outer; outer = outer->parent)
+            {
+                if (auto binding = outer->bindings.find(symbol))
+                {
+                    const std::vector<DefId>& enclosing = capture.captureDefs;
+                    if (std::find(enclosing.begin(), enclosing.end(), NotNull{*binding}) != enclosing.end())
+                        capture.outerCaptures[captureDef.get()] = *binding;
+                    break;
+                }
+            }
 
             return NotNull{captureDef};
         }
@@ -1325,7 +1343,10 @@ DefId DataFlowGraphBuilder::visitLValue(AstExprLocal* l, DefId incomingDef)
         return updated;
     }
     else
+    {
+        captures[l->local].assignedAsUpvalue = true;
         return visitExpr(static_cast<AstExpr*>(l)).def;
+    }
 }
 
 DefId DataFlowGraphBuilder::visitLValue(AstExprGlobal* g, DefId incomingDef)

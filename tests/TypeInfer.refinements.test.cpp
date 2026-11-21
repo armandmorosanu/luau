@@ -4097,4 +4097,39 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "upvalue_refined_on_the_right_of_or_stays_ref
     LUAU_REQUIRE_NO_ERRORS(result);
 }
 
+TEST_CASE_FIXTURE(Fixture, "upvalue_refined_in_a_function_stays_refined_in_its_closures")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        type M = { set: (M, string) -> () }
+        local function get(): M? return nil end
+        local s = get()
+        local function b()
+            if s == nil then return end
+            local f = function() s:set("a") end
+            local g = function() local h = function() s:set("b") end end
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
+TEST_CASE_FIXTURE(Fixture, "upvalue_assigned_in_a_function_does_not_stay_refined_in_its_closures")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        type M = { set: (M, string) -> () }
+        local function get(): M? return nil end
+        local s = get()
+        local function b()
+            if s == nil then return end
+            local f = function() s:set("a") end
+            s = nil
+        end
+    )");
+    LUAU_REQUIRE_ERRORS(result);
+    CHECK_EQ(Location{{6, 33}, {6, 38}}, result.errors[0].location);
+}
+
 TEST_SUITE_END();
