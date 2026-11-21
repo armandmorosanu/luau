@@ -2656,6 +2656,9 @@ bool ConstraintSolver::tryDispatch(const UnpackConstraint& c, NotNull<const Cons
     if (isBlocked(sourcePack))
         return block(sourcePack, constraint);
 
+    if (auto [head, tail] = flatten(sourcePack); head.size() < c.resultPack.size() && tail && isBlocked(*tail))
+        return block(*tail, constraint);
+
     TypePack srcPack = extendTypePack(*arena, builtinTypes, sourcePack, c.resultPack.size());
 
     auto resultIter = begin(c.resultPack);

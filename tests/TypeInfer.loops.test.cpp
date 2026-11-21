@@ -1646,4 +1646,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "for_in_loop_annotations_apply_inside_lambdas
     CHECK_EQ("string", toString(err->givenType));
 }
 
+TEST_CASE_FIXTURE(Fixture, "multiple_assignment_in_a_loop_waits_for_its_last_call")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        type V = { x: number, max: (V, V) -> V }
+        type P = { pos: V }
+        local function f(a: V, xs: { P }): number
+            local lo: V, hi: V = a, a
+            for _, p in xs do
+                lo, hi = lo:max(p.pos), hi:max(p.pos)
+            end
+            return hi.x
+        end
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();
