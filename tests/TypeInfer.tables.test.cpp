@@ -7028,4 +7028,20 @@ TEST_CASE_FIXTURE(Fixture, "oss_2669_infer_read_only_indexers_5")
     CHECK_EQ("{boolean | number}", toString(requireType("z"), {true}));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "table_insert_checks_a_literal_against_the_array_element_type")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        type goal = { kind: "a" | "b", n: number }
+        local c = math.random() < 0.5
+        local q: { goal } = {}
+        table.insert(q, { kind = "a", n = 1 })
+        table.insert(q, { kind = if c then "a" else "b", n = 1 })
+        local function ins<V>(t: { V }, v: V) table.insert(t, v) end
+        ins(q, { kind = "b", n = 2 })
+    )");
+    LUAU_REQUIRE_NO_ERRORS(result);
+}
+
 TEST_SUITE_END();

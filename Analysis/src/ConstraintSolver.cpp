@@ -1935,8 +1935,25 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
     // to force unannotated argument types of that lambda to be the expected
     // types.
 
-    // FIXME: Bidirectional type checking of overloaded functions is not yet supported.
+    // FIXME: Bidirectional type checking of overloaded functions is not yet supported, except when one overload
+    // alone takes exactly the call's argument count (`table.insert(t, v)` against `table.insert(t, i, v)`).
+    const size_t typeOffset = c.callSite->self ? 1 : 0;
     const FunctionType* ftv = get<FunctionType>(fn);
+    if (const IntersectionType* it = get<IntersectionType>(fn); it && !ftv)
+    {
+        for (TypeId part : it)
+        {
+            const FunctionType* overload = get<FunctionType>(follow(part));
+            if (!overload)
+                return true;
+            auto [params, paramTail] = flatten(overload->argTypes);
+            if (paramTail || params.size() != c.callSite->args.size + typeOffset)
+                continue;
+            if (ftv)
+                return true;
+            ftv = overload;
+        }
+    }
     if (!ftv)
         return true;
 
@@ -1957,10 +1974,27 @@ bool ConstraintSolver::tryDispatch(const FunctionCheckConstraint& c, NotNull<con
 
     // If this is a self call, the types will have more elements than the AST call.
     // We don't attempt to perform bidirectional inference on the self type.
-    const size_t typeOffset = c.callSite->self ? 1 : 0;
-
-    const std::vector<TypeId> expectedArgs = extendTypePack(*arena, builtinTypes, ftv->argTypes, c.callSite->args.size + typeOffset).head;
+    std::vector<TypeId> expectedArgs = extendTypePack(*arena, builtinTypes, ftv->argTypes, c.callSite->args.size + typeOffset).head;
     const std::vector<TypeId> argPackHead = flatten(argsPack).first;
+
+    // A generic `V` fixed by an argument of a known array type `{T}` is expected as `T` in the other arguments,
+    // so `insert(q, { kind = "a" })` with `q: {goal}` checks the literal against `goal` instead of joining
+    // `goal` and the literal's widened type as two lower bounds of `V`.
+    DenseHashMap<TypeId, TypeId> knownGenerics;
+    for (size_t i = 0; i < expectedArgs.size() && i < argPackHead.size(); ++i)
+    {
+        const TableType* param = get<TableType>(follow(expectedArgs[i]));
+        const TableType* arg = get<TableType>(follow(argPackHead[i]));
+        if (!param || !arg || !param->indexer || !arg->indexer || !param->props.empty() || arg->state == TableState::Free)
+            continue;
+        TypeId generic = follow(param->indexer->indexResultType);
+        TypeId element = follow(arg->indexer->indexResultType);
+        if (genericTypesAndPacks.contains(generic) && !isBlocked(element) && !get<FreeType>(element) && !knownGenerics.contains(generic))
+            knownGenerics[generic] = element;
+    }
+    for (size_t i = typeOffset; i < expectedArgs.size(); ++i)
+        if (TypeId* known = knownGenerics.find(follow(expectedArgs[i])))
+            expectedArgs[i] = *known;
 
     for (size_t i = 0; i < c.callSite->args.size && i + typeOffset < expectedArgs.size() && i + typeOffset < argPackHead.size(); ++i)
     {
