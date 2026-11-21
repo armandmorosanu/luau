@@ -248,6 +248,20 @@ OverloadResolution OverloadResolver::resolveOverload(
     else
         testFunctionOrUnion(result, ty, argsPack, fnLocation);
 
+    // Overloads that return the same thing make the same call whichever is picked.
+    if (result.ok.size() > 1)
+    {
+        const FunctionType* first = get<FunctionType>(follow(result.ok.front()));
+        auto sameResult = [&](TypeId overload)
+        {
+            const FunctionType* other = get<FunctionType>(follow(overload));
+            return first && other && subtyping.isSubtype(first->retTypes, other->retTypes, scope, {}).isSubtype &&
+                   subtyping.isSubtype(other->retTypes, first->retTypes, scope, {}).isSubtype;
+        };
+        if (std::all_of(result.ok.begin() + 1, result.ok.end(), sameResult))
+            result.ok.resize(1);
+    }
+
     return result;
 }
 
@@ -601,6 +615,18 @@ void OverloadResolver::testFunction(
     {
         result.incompatibleOverloads.emplace_back(fnTy, std::move(reduceResult.errors));
         return;
+    }
+
+    // A `...T` argument tail fills a non-generic overload's remaining fixed parameters, as it does for a single function.
+    auto [argsHead, argsTail] = flatten(argsPack);
+    auto [paramsHead, paramsTail] = flatten(ftv->argTypes);
+    if (argsTail && argsHead.size() < paramsHead.size() && ftv->generics.empty() && ftv->genericPacks.empty())
+    {
+        if (const VariadicTypePack* vtp = get<VariadicTypePack>(follow(*argsTail)); vtp && !vtp->hidden)
+        {
+            argsHead.resize(paramsHead.size(), vtp->ty);
+            argsPack = arena->addTypePack(TypePack{std::move(argsHead), std::nullopt});
+        }
     }
 
     TypeId prospectiveFunction = arena->addType(FunctionType{argsPack, builtinTypes->anyTypePack});

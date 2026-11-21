@@ -1447,4 +1447,22 @@ TEST_CASE_FIXTURE(BuiltinsFixture, "bounds_propagate_into_free_intersection_boun
     CHECK("string" == toString(requireType("c")));
 }
 
+TEST_CASE_FIXTURE(BuiltinsFixture, "variadic_arguments_fill_an_overloads_fixed_parameters")
+{
+    DOES_NOT_PASS_OLD_SOLVER_GUARD();
+
+    CheckResult result = check(R"(
+        type V = { x: number }
+        local new: (() -> V) & ((number) -> V) & ((number, number, number) -> V) = nil :: any
+        local pick: ((number) -> string) & ((number, number) -> number) = nil :: any
+        local t = { 1, 2, 3 }
+        local v: V = new(table.unpack(t))
+        local s: string = new(table.unpack(t))
+        pick(table.unpack(t))
+    )");
+    LUAU_REQUIRE_ERROR_COUNT(2, result);
+    CHECK_EQ(Location{{6, 26}, {6, 46}}, result.errors[0].location);
+    CHECK(get<AmbiguousFunctionCall>(result.errors[1]));
+}
+
 TEST_SUITE_END();
